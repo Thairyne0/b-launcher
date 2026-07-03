@@ -229,10 +229,12 @@ final class AppModel {
         }
     }
 
-    /// Stop di tutto con attesa (max ~6s: grace 5s di killpg + margine). Per il quit.
+    /// Stop di tutto con attesa (grace di killpg configurabile + margine). Per il quit.
+    /// Il minimo storico di 6.5s resta come pavimento anche se la grace configurata è più bassa.
     func shutdownForQuit() async {
         stopAll()
-        let deadline = Date().addingTimeInterval(6.5)
+        let timeout = max(6.5, AppSettings.killGracePeriodSeconds + 1.5)
+        let deadline = Date().addingTimeInterval(timeout)
         while anyRunning && Date() < deadline {
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
@@ -258,7 +260,8 @@ final class AppModel {
                 }) {
                     self.reloadFromStore()
                 }
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                let pollSeconds = AppSettings.pollIntervalSeconds
+                try? await Task.sleep(nanoseconds: UInt64(pollSeconds * 1_000_000_000))
             }
         }
     }

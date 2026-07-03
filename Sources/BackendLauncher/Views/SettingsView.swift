@@ -1,0 +1,58 @@
+import SwiftUI
+
+/// Finestra Impostazioni dell'app (⌘,), aperta dalla scene `Settings` in BackendLauncherApp.
+/// Legge/scrive direttamente `AppSettings` (UserDefaults): lo stato locale qui è solo per
+/// pilotare gli Slider/Stepper — ogni modifica viene scritta subito via `onChange`, quindi
+/// non serve alcun pulsante "Salva".
+struct SettingsView: View {
+    @State private var pollIntervalSeconds: Double = AppSettings.pollIntervalSeconds
+    @State private var killGracePeriodSeconds: Double = AppSettings.killGracePeriodSeconds
+    @State private var maxLogLines: Double = Double(AppSettings.maxLogLines)
+    @State private var crashNotificationsEnabled: Bool = AppSettings.crashNotificationsEnabled
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Slider(value: $pollIntervalSeconds, in: 1...30, step: 1) {
+                        Text("Intervallo aggiornamento stato")
+                    }
+                    Text("Ogni \(Int(pollIntervalSeconds)) s")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Stepper(value: $killGracePeriodSeconds, in: 1...30, step: 1) {
+                    Text("Attesa prima di kill forzato: \(Int(killGracePeriodSeconds)) s")
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Stepper(value: $maxLogLines, in: 500...50000, step: 500) {
+                        Text("Righe massime per terminale: \(Int(maxLogLines))")
+                    }
+                    Text("Vale per i nuovi avvii")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                Toggle("Notifiche di crash", isOn: $crashNotificationsEnabled)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 420, height: 300)
+        .onChange(of: pollIntervalSeconds) { _, newValue in
+            AppSettings.pollIntervalSeconds = newValue
+        }
+        .onChange(of: killGracePeriodSeconds) { _, newValue in
+            AppSettings.killGracePeriodSeconds = newValue
+        }
+        .onChange(of: maxLogLines) { _, newValue in
+            AppSettings.maxLogLines = Int(newValue)
+        }
+        .onChange(of: crashNotificationsEnabled) { _, newValue in
+            AppSettings.crashNotificationsEnabled = newValue
+        }
+    }
+}

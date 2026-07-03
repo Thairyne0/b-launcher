@@ -30,7 +30,7 @@ enum CrashNotifier {
     /// (namespaced), portato nello userInfo per il deep-link al tap (AppModel.revealService
     /// fa match esatto sull'id, con fallback sul nome breve per notifiche pre-namespacing).
     static func notifyCrash(service: String, serviceID: String, exitCode: Int32) {
-        guard isAvailable else { return }
+        guard isAvailable, AppSettings.crashNotificationsEnabled else { return }
         let content = UNMutableNotificationContent()
         content.title = "\(service) è crashato"
         content.body = "Exit code \(exitCode). Riavvialo dal launcher."

@@ -49,8 +49,11 @@ final class LogStore {
     /// conoscere LogStore. Se il prefisso cambia lato ServiceController, aggiornare qui.
     private static let launcherStartBanner = "[launcher] ── avvio"
 
-    init(maxLines: Int = 5000) {
-        self.maxLines = maxLines
+    /// `maxLines` esplicito (usato dai test) ha priorità; altrimenti legge
+    /// `AppSettings.maxLogLines` — il cap si applica solo ai nuovi avvii, non retroattivamente
+    /// ai LogStore già esistenti.
+    init(maxLines: Int? = nil) {
+        self.maxLines = maxLines ?? AppSettings.maxLogLines
     }
 
     var visibleLines: [LogLine] {

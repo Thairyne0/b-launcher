@@ -108,6 +108,10 @@ struct BackendLauncherApp: App {
         } label: {
             Image(systemName: menuBarIcon)
         }
+
+        Settings {
+            SettingsView()
+        }
     }
 }
 

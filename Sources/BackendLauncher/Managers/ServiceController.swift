@@ -159,7 +159,7 @@ final class ServiceController: Identifiable {
         guard processAlive, let process else { return }
         stopRequested = true
         logs.ingest("[launcher] ── stop richiesto ──\n")
-        process.terminate()
+        process.terminate(gracePeriod: AppSettings.killGracePeriodSeconds)
     }
 
     func restart() {
