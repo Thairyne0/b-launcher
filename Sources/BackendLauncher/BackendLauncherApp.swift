@@ -42,7 +42,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct BackendLauncherApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @State private var model = AppModel()
+    @State private var store: ServiceStore
+    @State private var model: AppModel
+
+    init() {
+        let store = ServiceStore()
+        _store = State(initialValue: store)
+        _model = State(initialValue: AppModel(store: store))
+    }
 
     private var menuBarIcon: String {
         if model.services.contains(where: {

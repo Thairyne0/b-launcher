@@ -14,13 +14,47 @@ final class AppModel {
     /// attiva su "Backend" quando l'utente tocca una notifica di crash.
     private(set) var revealRequestCount = 0
 
+    /// `nil` quando l'AppModel è creato con l'init legacy (`configs:`), usato dai test esistenti.
+    let store: ServiceStore?
+    /// Infra check (es. NATS) del progetto attivo. Nell'init legacy default a NATS 4222
+    /// per preservare il comportamento storico del poller.
+    private(set) var infraCheck: StoredInfraCheck?
+    /// Profili di avvio del progetto attivo (store) o fallback legacy (init di test).
+    let profiles: [LaunchProfile]
+
     private var pollTask: Task<Void, Never>?
 
-    /// `cwd`, `pollingEnabled` e `crashNotificationsEnabled` iniettabili solo per i test.
-    init(configs: [ServiceConfig] = ServiceConfig.all,
+    /// Init store-driven: legge il progetto attivo dallo store e ne deriva servizi/profili/infra check.
+    init(store: ServiceStore,
+         pollingEnabled: Bool = true,
+         crashNotificationsEnabled: Bool = true) {
+        self.store = store
+        let project = store.activeProject
+        let configs = project.map(store.serviceConfigs(for:)) ?? []
+        self.infraCheck = project?.infraCheck ?? StoredInfraCheck(label: "NATS", port: ServiceConfig.natsPort)
+        self.profiles = (project?.profiles ?? []).map {
+            LaunchProfile(name: $0.name, serviceNames: $0.serviceNames)
+        }
+        services = configs.map { config in
+            let onCrash: ((String, Int32) -> Void)? = crashNotificationsEnabled
+                ? { displayName, code in
+                    CrashNotifier.notifyCrash(service: displayName, serviceID: config.name, exitCode: code)
+                }
+                : nil
+            return ServiceController(config: config, cwd: nil, onCrash: onCrash)
+        }
+        if pollingEnabled { startPolling() }
+    }
+
+    /// Init legacy: `configs`, `cwd`, `pollingEnabled` e `crashNotificationsEnabled` iniettabili
+    /// per i test. `store` è `nil` e `infraCheck` resta NATS 4222 (comportamento storico).
+    init(configs: [ServiceConfig] = ServiceConfig.legacyAll,
          cwd: String? = nil,
          pollingEnabled: Bool = true,
          crashNotificationsEnabled: Bool = true) {
+        self.store = nil
+        self.infraCheck = StoredInfraCheck(label: "NATS", port: ServiceConfig.natsPort)
+        self.profiles = ServiceConfig.legacyProfiles
         services = configs.map { config in
             // onCrash riceve (nome visualizzato, exit code) da ServiceController; il nome
             // breve (config.name) per lo userInfo/deep-link è catturato qui dalla config.
@@ -86,9 +120,10 @@ final class AppModel {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let ports = [ServiceConfig.natsPort] + self.services.compactMap(\.config.port)
+                let infraPort = self.infraCheck?.port
+                let ports = (infraPort.map { [$0] } ?? []) + self.services.compactMap(\.config.port)
                 let results = await Self.checkPorts(ports)
-                self.natsUp = results[ServiceConfig.natsPort] ?? false
+                self.natsUp = infraPort.flatMap { results[$0] } ?? false
                 for service in self.services {
                     if let p = service.config.port {
                         service.portOpen = results[p] ?? false
