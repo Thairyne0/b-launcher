@@ -42,3 +42,43 @@ import Testing
         #expect(reserialized == "gateway,hr,bill")
     }
 }
+
+@Suite struct SidebarSelectionCodingTests {
+    @Test func encodeGrid() {
+        #expect(SidebarSelectionCoding.encode(.grid) == "grid")
+    }
+
+    @Test func encodeFocus() {
+        #expect(SidebarSelectionCoding.encode(.focus) == "focus")
+    }
+
+    @Test func encodeService() {
+        #expect(SidebarSelectionCoding.encode(.service("gateway")) == "service:gateway")
+    }
+
+    @Test func decodeGrid() {
+        #expect(SidebarSelectionCoding.decode("grid") == .grid)
+    }
+
+    @Test func decodeFocus() {
+        #expect(SidebarSelectionCoding.decode("focus") == .focus)
+    }
+
+    @Test func decodeService() {
+        #expect(SidebarSelectionCoding.decode("service:gateway") == .service("gateway"))
+    }
+
+    @Test func decodeUnknownFallsBackToGrid() {
+        #expect(SidebarSelectionCoding.decode("bogus") == .grid)
+        #expect(SidebarSelectionCoding.decode("") == .grid)
+        #expect(SidebarSelectionCoding.decode("service:") == .grid)
+    }
+
+    @Test func roundTripPreservesSelection() {
+        let selections: [SidebarSelection] = [.grid, .focus, .service("id"), .service("gateway")]
+        for selection in selections {
+            let encoded = SidebarSelectionCoding.encode(selection)
+            #expect(SidebarSelectionCoding.decode(encoded) == selection)
+        }
+    }
+}

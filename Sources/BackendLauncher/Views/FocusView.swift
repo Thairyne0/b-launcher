@@ -80,11 +80,11 @@ struct FocusView: View {
             ContentUnavailableView("Seleziona uno o più backend",
                                    systemImage: "rectangle.on.rectangle")
         case 1:
-            FocusPane(controller: controllers[0])
+            ServicePaneView(controller: controllers[0])
         case 2:
             HStack(spacing: 14) {
                 ForEach(controllers) { controller in
-                    FocusPane(controller: controller)
+                    ServicePaneView(controller: controller)
                 }
             }
         default:
@@ -92,7 +92,7 @@ struct FocusView: View {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)],
                           spacing: 14) {
                     ForEach(controllers) { controller in
-                        FocusPane(controller: controller)
+                        ServicePaneView(controller: controller)
                             .frame(minHeight: 380)
                     }
                 }
@@ -101,8 +101,9 @@ struct FocusView: View {
     }
 }
 
-/// Riquadro glass di un singolo backend in Focus: header compatto + terminale a pieno spazio.
-private struct FocusPane: View {
+/// Riquadro glass di un singolo backend: header compatto + terminale a pieno spazio.
+/// Usato dalla griglia Focus (multi-pane) e dalla vista di dettaglio singolo servizio in sidebar.
+struct ServicePaneView: View {
     var controller: ServiceController
 
     var body: some View {

@@ -68,7 +68,7 @@ struct BackendLauncherApp: App {
             ContentView(model: model)
                 .onAppear { delegate.model = model }
         }
-        .defaultSize(width: 560, height: 720)
+        .defaultSize(width: 860, height: 720)
         .commands {
             CommandMenu("Servizi") {
                 // Etichetta statica: i contenuti di .commands non si ri-valutano
