@@ -28,7 +28,8 @@ Root progetto: `/Users/retr0/Documents/skilllocale/SkillLocale` (costante in `Se
 | hr | `SKILLHR-BE` | 4006 | `npm run start:dev` |
 | certet | `SKILLCERTET-BE` | 4010 | `npm run start:dev` |
 | bill | `SKILLBILL-BE` | 4012 | `npm run start:dev` |
-| infra | root progetto | 4222 (NATS) | `docker compose -f docker-compose.infra.yml up -d` / `stop` |
+
+L'infrastruttura (NATS/Redis/Milvus in Docker) NON è gestita dal launcher: i container restano sempre attivi da soli. Il launcher mostra solo un **indicatore passivo NATS** (porta 4222) nella toolbar — verde/rosso — perché senza NATS i backend non comunicano.
 
 ## Architettura
 
@@ -46,14 +47,12 @@ Backend Launcher/
       ServiceStatus.swift       # enum stato
     Managers/
       ProcessManager.swift      # spawn con process group, killpg, pipe log
-      InfraManager.swift        # docker compose up/stop + stato
-      PortMonitor.swift         # TCP check porte, poll 2s
+      PortMonitor.swift         # TCP check porte, poll 2s (backend + NATS)
       LogStore.swift            # ring buffer 5000 righe/servizio + ricerca
     Views/
-      ContentView.swift         # toolbar + card infra + 6 card backend
+      ContentView.swift         # toolbar (+ spia NATS) + 6 card backend
       ServiceCardView.swift     # status dot, nome, porta, uptime, ▶︎ ■ ↻, chevron
       TerminalView.swift        # log monospace, autoscroll, ricerca, clear
-      InfraCardView.swift
   Tests/BackendLauncherTests/   # Swift Testing
 ```
 
@@ -78,22 +77,21 @@ Poll porta TCP ogni 2s + osservazione vita processo:
 | crashed | rosso | processo morto da solo (exit code mostrato) |
 | esterno | blu | porta aperta ma processo non del launcher → start disabilitato |
 
-Infra: status = porta NATS 4222 aperta.
+NATS (spia in toolbar): verde = porta 4222 aperta, rosso = chiusa.
 
 ## UI (Liquid Glass)
 
 - Finestra unica, sfondo material, dark/light automatici.
-- **Toolbar**: "Avvia tutti" / "Ferma tutti" (`.buttonStyle(.glass)`).
-  - Avvia tutti: parte infra → attende NATS su (max 30s) → parte i 6 backend.
-  - Ferma tutti: ferma i backend, poi l'infra.
-- **Card infra** in cima (stile distinto), poi 6 **card backend** in `GlassEffectContainer` con `.glassEffect(.regular, in:)`.
+- **Toolbar**: "Avvia tutti" / "Ferma tutti" (`.buttonStyle(.glass)`) + spia NATS (pallino verde/rosso, tooltip).
+  - Avvia tutti: parte i 6 backend; se NATS giù, avviso ma parte comunque.
+  - Ferma tutti: ferma tutti i backend.
+- 6 **card backend** in `GlassEffectContainer` con `.glassEffect(.regular, in:)`.
 - Card backend: pallino status animato, nome, porta, uptime, bottoni ▶︎ ■ ↻, chevron → **terminale inline espandibile** (~300px, monospace, sfondo scuro, autoscroll disattivabile, campo ricerca/filtro, bottone clear). Più terminali apribili insieme.
 
 ## Errori
 
 - npm non trovato (`zsh -lc which npm` fallisce) → alert con fix suggerito.
-- Docker spento → card infra "Docker non in esecuzione", start disabilitato.
-- "Avvia tutti" con infra giù → parte infra, attende NATS max 30s; timeout → errore visibile, backend non partono.
+- NATS giù (porta 4222 chiusa) → spia rossa in toolbar; "Avvia tutti" mostra avviso ma procede.
 - Porta occupata da processo esterno → stato "esterno", start disabilitato.
 
 ## Test
@@ -104,6 +102,7 @@ Infra: status = porta NATS 4222 aperta.
 
 ## Fuori scope
 
+- Gestione infrastruttura Docker (NATS/Redis/Milvus): container sempre attivi da soli; launcher mostra solo la spia NATS
 - Autorestart su crash (PM2-style)
 - Link rapidi Swagger/browser
 - Gestione servizi non richiesti (lms, ai, mentore, train)
