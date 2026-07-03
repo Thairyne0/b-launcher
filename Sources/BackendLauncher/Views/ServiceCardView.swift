@@ -17,14 +17,20 @@ struct ServiceCardView: View {
                             .font(.title3.weight(.semibold))
 
                         if controller.logs.errorCount > 0 {
-                            Text("\(controller.logs.errorCount)")
-                                .font(.caption2.bold())
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 1)
-                                .background(Color.red.opacity(0.85), in: .capsule)
-                                .foregroundStyle(.white)
-                                .help("Errori nei log di questa esecuzione")
-                                .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                            Button {
+                                controller.logs.levelFilter = .errors
+                                withAnimation(.snappy) { showTerminal = true }
+                            } label: {
+                                Text("\(controller.logs.errorCount)")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 1)
+                                    .background(Color.red.opacity(0.85), in: .capsule)
+                                    .foregroundStyle(.white)
+                                    .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                            }
+                            .buttonStyle(.plain)
+                            .help("Mostra gli errori nel terminale")
                         }
                     }
                     HStack(spacing: 4) {
@@ -35,6 +41,14 @@ struct ServiceCardView: View {
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                    if !showTerminal && controller.processAlive {
+                        Text(controller.logs.lines.last?.text ?? " ")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
 
                 Spacer()

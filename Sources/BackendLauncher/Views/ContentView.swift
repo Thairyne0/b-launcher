@@ -10,10 +10,7 @@ struct ContentView: View {
     @Bindable var model: AppModel
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("launcherPage") private var page: LauncherPage = .dashboard
-    @State private var expandedServices: Set<String> = []
     @State private var contentWidth: CGFloat = 1200
-
-    private var allExpanded: Bool { expandedServices.count == model.services.count }
 
     private var gridColumns: [GridItem] {
         contentWidth < 860
@@ -31,9 +28,9 @@ struct ContentView: View {
                             LazyVGrid(columns: gridColumns, spacing: 20) {
                                 ForEach(model.services) { controller in
                                     ServiceCardView(controller: controller, showTerminal: Binding(
-                                        get: { expandedServices.contains(controller.id) },
+                                        get: { model.expandedServices.contains(controller.id) },
                                         set: { isOn in
-                                            if isOn { expandedServices.insert(controller.id) } else { expandedServices.remove(controller.id) }
+                                            if isOn { model.expandedServices.insert(controller.id) } else { model.expandedServices.remove(controller.id) }
                                         }
                                     ))
                                 }
@@ -46,10 +43,13 @@ struct ContentView: View {
                     } action: { newWidth in
                         contentWidth = newWidth
                     }
+                    .transition(.opacity)
                 case .focus:
                     FocusView(model: model)
+                        .transition(.opacity)
                 }
             }
+            .animation(.easeOut(duration: 0.2), value: page)
             .background {
                 LinearGradient(colors: colorScheme == .dark
                                ? [Color(white: 0.13), Color(white: 0.07)]
@@ -73,10 +73,10 @@ struct ContentView: View {
                     .labelsHidden()
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Button(allExpanded ? "Comprimi tutti" : "Espandi tutti",
-                           systemImage: allExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical") {
+                    Button(model.allExpanded ? "Comprimi tutti" : "Espandi tutti",
+                           systemImage: model.allExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical") {
                         withAnimation(.snappy) {
-                            expandedServices = allExpanded ? [] : Set(model.services.map(\.id))
+                            model.toggleAllTerminals()
                         }
                     }
                     Menu("Profili", systemImage: "list.bullet.rectangle") {
@@ -86,7 +86,7 @@ struct ContentView: View {
                     }
                     Button("Avvia tutti", systemImage: "play.fill") { model.startAll() }
                         .disabled(model.services.allSatisfy { $0.processAlive })
-                    Button("Ferma tutti", systemImage: "stop.fill") { model.stopAll() }
+                    Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
                         .disabled(!model.anyRunning)
                 }
             }
@@ -94,6 +94,12 @@ struct ContentView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text("La porta 4222 è chiusa: i backend partono ma non comunicano tra loro. Controlla i container Docker (skillera-nats).")
+            }
+            .confirmationDialog("Fermare tutti i backend?", isPresented: $model.stopAllRequested) {
+                Button("Ferma tutti", role: .destructive) { model.stopAll() }
+                Button("Annulla", role: .cancel) {}
+            } message: {
+                Text("Tutti i processi verranno terminati.")
             }
         }
         .frame(minWidth: 520, minHeight: 480)

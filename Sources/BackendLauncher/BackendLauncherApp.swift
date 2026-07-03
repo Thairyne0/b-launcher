@@ -58,6 +58,30 @@ struct BackendLauncherApp: App {
                 .onAppear { delegate.model = model }
         }
         .defaultSize(width: 560, height: 720)
+        .commands {
+            CommandMenu("Servizi") {
+                Button(model.allExpanded ? "Comprimi tutti i terminali" : "Espandi tutti i terminali") {
+                    model.toggleAllTerminals()
+                }
+                .keyboardShortcut("e", modifiers: .command)
+
+                Divider()
+
+                ForEach(Array(model.services.enumerated()), id: \.element.id) { index, service in
+                    Button("Terminale \(service.config.displayName)") {
+                        model.toggleTerminal(service.id)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                }
+
+                Divider()
+
+                Button("Avvia tutti") { model.startAll() }
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                Button("Ferma tutti…") { model.stopAllRequested = true }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+            }
+        }
 
         MenuBarExtra {
             MenuBarContent(model: model)
@@ -81,6 +105,7 @@ struct MenuBarContent: View {
             .disabled(model.services.allSatisfy { $0.processAlive })
         Button("Ferma tutti") { model.stopAll() }
             .disabled(!model.anyRunning)
+            .help("Ferma subito, senza conferma")
         Divider()
         Button("Apri launcher") {
             NSApp.activate(ignoringOtherApps: true)

@@ -68,4 +68,22 @@ import Testing
         #expect(ServiceConfig.profiles[0].serviceNames == ["gateway", "id"])
         #expect(ServiceConfig.profiles[1].serviceNames == ServiceConfig.all.map(\.name))
     }
+
+    @Test func toggleAllTerminalsFlipsBetweenAllAndNone() {
+        let model = AppModel(configs: fakeConfigs, cwd: "/tmp", pollingEnabled: false)
+        #expect(model.expandedServices.isEmpty)
+        model.toggleAllTerminals()
+        #expect(model.expandedServices.count == model.services.count)
+        model.toggleAllTerminals()
+        #expect(model.expandedServices.isEmpty)
+    }
+
+    @Test func toggleTerminalTogglesSingle() {
+        let model = AppModel(configs: fakeConfigs, cwd: "/tmp", pollingEnabled: false)
+        let id = model.services[0].id
+        model.toggleTerminal(id)
+        #expect(model.expandedServices.contains(id))
+        model.toggleTerminal(id)
+        #expect(!model.expandedServices.contains(id))
+    }
 }

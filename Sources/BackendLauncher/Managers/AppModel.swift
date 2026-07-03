@@ -8,6 +8,8 @@ final class AppModel {
     let services: [ServiceController]
     private(set) var natsUp = false
     var showNATSWarning = false
+    var stopAllRequested = false
+    var expandedServices: Set<String> = []
 
     private var pollTask: Task<Void, Never>?
 
@@ -24,6 +26,15 @@ final class AppModel {
     }
 
     var anyRunning: Bool { services.contains { $0.processAlive } }
+    var allExpanded: Bool { expandedServices.count == services.count }
+
+    func toggleAllTerminals() {
+        expandedServices = allExpanded ? [] : Set(services.map(\.id))
+    }
+
+    func toggleTerminal(_ id: String) {
+        if expandedServices.contains(id) { expandedServices.remove(id) } else { expandedServices.insert(id) }
+    }
 
     func startAll() {
         if !natsUp { showNATSWarning = true }  // avvisa ma procedi (spec)
