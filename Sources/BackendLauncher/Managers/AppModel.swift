@@ -5,7 +5,7 @@ import Observation
 @MainActor
 @Observable
 final class AppModel {
-    let services: [ServiceController]
+    private(set) var services: [ServiceController]
     private(set) var natsUp = false
     var showNATSWarning = false
     var stopAllRequested = false
@@ -13,36 +13,48 @@ final class AppModel {
     /// Incrementato a ogni `revealService`: la view lo osserva per riportare la pagina
     /// attiva su "Backend" quando l'utente tocca una notifica di crash.
     private(set) var revealRequestCount = 0
+    /// Id (namespaced) dell'ultimo servizio rivelato da `revealService`: la view lo usa per
+    /// navigare direttamente sul pannello del servizio invece di ricadere sulla griglia.
+    private(set) var lastRevealedServiceID: String?
 
     /// `nil` quando l'AppModel è creato con l'init legacy (`configs:`), usato dai test esistenti.
     let store: ServiceStore?
-    /// Infra check (es. NATS) del progetto attivo. Nell'init legacy default a NATS 4222
-    /// per preservare il comportamento storico del poller.
+    /// Infra check (es. NATS) del primo progetto che ne ha uno configurato.
+    /// Limite noto: con più progetti l'app ha un solo indicatore NATS globale — non c'è
+    /// ancora UI per un infra check per-progetto (fuori scope Phase D).
     private(set) var infraCheck: StoredInfraCheck?
-    /// Profili di avvio del progetto attivo (store) o fallback legacy (init di test).
-    let profiles: [LaunchProfile]
+    /// Profili di avvio "piatti": nell'init legacy sono `ServiceConfig.legacyProfiles`;
+    /// nell'init store-driven sono i profili del PRIMO progetto (comportamento storico
+    /// preservato per compatibilità con `start(profile:)` e i test esistenti). Per la UI
+    /// multi-progetto usare `projectProfiles`, che copre tutti i progetti.
+    private(set) var profiles: [LaunchProfile]
+    /// Profili raggruppati per progetto, in ordine — usati dal menu "Profili" quando
+    /// ci sono più progetti (submenu per progetto) e da `start(profile:inProject:)`.
+    private(set) var projectProfiles: [(projectName: String, profiles: [LaunchProfile])] = []
+    /// Id (namespaced) dei servizi la cui configurazione su disco è cambiata mentre il
+    /// relativo processo era in esecuzione: `reloadFromStore()` non sostituisce un
+    /// controller vivo (fermerebbe silenziosamente il processo dell'utente), quindi la
+    /// nuova config resta "in sospeso" finché il servizio non viene fermato — al successivo
+    /// `reloadFromStore()` la sostituzione avviene normalmente. La UI può mostrare un badge
+    /// "riavvia per applicare le modifiche" leggendo questo set.
+    private(set) var pendingConfigChanges: Set<String> = []
 
     private var pollTask: Task<Void, Never>?
+    private let crashNotificationsEnabled: Bool
 
-    /// Init store-driven: legge il progetto attivo dallo store e ne deriva servizi/profili/infra check.
+    /// Init store-driven: costruisce i controller per TUTTI i progetti dello store (id
+    /// namespaced "Progetto/nome"), non solo il primo — supporto multi-progetto reale.
     init(store: ServiceStore,
          pollingEnabled: Bool = true,
          crashNotificationsEnabled: Bool = true) {
         self.store = store
-        let project = store.activeProject
-        let configs = project.map(store.serviceConfigs(for:)) ?? []
-        self.infraCheck = project?.infraCheck ?? StoredInfraCheck(label: "NATS", port: ServiceConfig.natsPort)
-        self.profiles = (project?.profiles ?? []).map {
-            LaunchProfile(name: $0.name, serviceNames: $0.serviceNames)
-        }
-        services = configs.map { config in
-            let onCrash: ((String, Int32) -> Void)? = crashNotificationsEnabled
-                ? { displayName, code in
-                    CrashNotifier.notifyCrash(service: displayName, serviceID: config.name, exitCode: code)
-                }
-                : nil
-            return ServiceController(config: config, cwd: nil, onCrash: onCrash)
-        }
+        self.crashNotificationsEnabled = crashNotificationsEnabled
+        self.infraCheck = store.projects.first { $0.infraCheck != nil }?.infraCheck
+        let (flatProfiles, grouped) = Self.buildProfiles(from: store.projects)
+        self.profiles = flatProfiles
+        self.projectProfiles = grouped
+        let configs = store.projects.flatMap(store.serviceConfigs(for:))
+        services = configs.map { Self.makeController(config: $0, cwd: nil, crashNotificationsEnabled: crashNotificationsEnabled) }
         if pollingEnabled { startPolling() }
     }
 
@@ -53,27 +65,103 @@ final class AppModel {
          pollingEnabled: Bool = true,
          crashNotificationsEnabled: Bool = true) {
         self.store = nil
+        self.crashNotificationsEnabled = crashNotificationsEnabled
         self.infraCheck = StoredInfraCheck(label: "NATS", port: ServiceConfig.natsPort)
         self.profiles = ServiceConfig.legacyProfiles
-        services = configs.map { config in
-            // onCrash riceve (nome visualizzato, exit code) da ServiceController; il nome
-            // breve (config.name) per lo userInfo/deep-link è catturato qui dalla config.
-            let onCrash: ((String, Int32) -> Void)? = crashNotificationsEnabled
-                ? { displayName, code in
-                    CrashNotifier.notifyCrash(service: displayName, serviceID: config.name, exitCode: code)
-                }
-                : nil
-            return ServiceController(config: config, cwd: cwd, onCrash: onCrash)
-        }
+        self.projectProfiles = [(projectName: "", profiles: ServiceConfig.legacyProfiles)]
+        services = configs.map { Self.makeController(config: $0, cwd: cwd, crashNotificationsEnabled: crashNotificationsEnabled) }
         if pollingEnabled { startPolling() }
     }
 
+    private static func buildProfiles(from projects: [StoredProject]) -> (flat: [LaunchProfile], grouped: [(projectName: String, profiles: [LaunchProfile])]) {
+        let grouped = projects.map { project in
+            (projectName: project.name, profiles: project.profiles.map {
+                LaunchProfile(name: $0.name, serviceNames: $0.serviceNames)
+            })
+        }
+        return (grouped.first?.profiles ?? [], grouped)
+    }
+
+    private static func makeController(config: ServiceConfig, cwd: String?, crashNotificationsEnabled: Bool) -> ServiceController {
+        let onCrash: ((String, Int32) -> Void)? = crashNotificationsEnabled
+            ? { displayName, code in
+                CrashNotifier.notifyCrash(service: displayName, serviceID: config.id, exitCode: code)
+            }
+            : nil
+        return ServiceController(config: config, cwd: cwd, onCrash: onCrash)
+    }
+
+    /// Ricostruisce `services` dallo stato corrente dello store dopo una mutazione
+    /// (add/edit/delete di progetti o servizi dal wizard). Regole:
+    /// - un controller esistente la cui config è INVARIATA viene mantenuto (stessa istanza:
+    ///   niente terminale/stato perso per servizi non toccati dalla modifica);
+    /// - se la config è cambiata e il processo non è vivo, il controller viene sostituito;
+    /// - se la config è cambiata ma il processo È vivo, il controller vecchio resta (non
+    ///   vogliamo fermare un processo dell'utente sotto silenzio) e il suo id entra in
+    ///   `pendingConfigChanges` finché non viene fermato e ricaricato di nuovo;
+    /// - un id non più presente nello store viene fermato (se vivo) e rimosso dall'array;
+    /// - un id nuovo ottiene un controller fresco.
+    func reloadFromStore() {
+        guard let store else { return }
+        self.infraCheck = store.projects.first { $0.infraCheck != nil }?.infraCheck
+        let (flatProfiles, grouped) = Self.buildProfiles(from: store.projects)
+        self.profiles = flatProfiles
+        self.projectProfiles = grouped
+
+        let targetConfigs = store.projects.flatMap(store.serviceConfigs(for:))
+        let targetByID = Dictionary(uniqueKeysWithValues: targetConfigs.map { ($0.id, $0) })
+        let existingByID = Dictionary(uniqueKeysWithValues: services.map { ($0.id, $0) })
+
+        // Servizi rimossi dallo store: ferma (se vivo) e scarta il riferimento. Il processo
+        // sottostante resta vivo fino al reap (SpawnedProcess si auto-mantiene nel registry),
+        // ma non ci serve più tenerne il controller.
+        for controller in services where targetByID[controller.id] == nil {
+            if controller.processAlive { controller.stop() }
+        }
+
+        var newServices: [ServiceController] = []
+        newServices.reserveCapacity(targetConfigs.count)
+        for config in targetConfigs {
+            if let existing = existingByID[config.id] {
+                if existing.config == config {
+                    newServices.append(existing)
+                    pendingConfigChanges.remove(config.id)
+                } else if existing.processAlive {
+                    // Config cambiata ma il servizio è in esecuzione: mantieni il controller
+                    // vivo, la nuova config si applica al prossimo reload dopo lo stop.
+                    newServices.append(existing)
+                    pendingConfigChanges.insert(config.id)
+                } else {
+                    newServices.append(Self.makeController(config: config, cwd: nil, crashNotificationsEnabled: crashNotificationsEnabled))
+                    pendingConfigChanges.remove(config.id)
+                }
+            } else {
+                newServices.append(Self.makeController(config: config, cwd: nil, crashNotificationsEnabled: crashNotificationsEnabled))
+            }
+        }
+        services = newServices
+
+        let liveIDs = Set(services.map(\.id))
+        expandedServices = expandedServices.intersection(liveIDs)
+        pendingConfigChanges = pendingConfigChanges.intersection(liveIDs)
+    }
+
     /// Porta l'attenzione su un servizio: espande il suo terminale e filtra sugli errori.
-    /// Usato dal deep-link della notifica di crash (match su config.name).
-    func revealService(named name: String) {
-        guard let service = services.first(where: { $0.config.name == name }) else { return }
+    /// Usato dal deep-link della notifica di crash. `id` è l'id namespaced (config.id).
+    /// Fallback: notifiche create prima del namespacing portano il solo nome breve (config.name)
+    /// nello userInfo — se non c'è match esatto sull'id, prova un match univoco sul nome.
+    func revealService(named id: String) {
+        let service: ServiceController?
+        if let exact = services.first(where: { $0.id == id }) {
+            service = exact
+        } else {
+            let byName = services.filter { $0.config.name == id }
+            service = byName.count == 1 ? byName[0] : nil
+        }
+        guard let service else { return }
         expandedServices.insert(service.id)
         service.logs.levelFilter = .errors
+        lastRevealedServiceID = service.id
         revealRequestCount += 1
     }
 
@@ -99,10 +187,26 @@ final class AppModel {
         for service in services { service.stop() }
     }
 
+    /// Avvia un profilo facendo match sul nome breve tra TUTTI i servizi (comportamento
+    /// storico, corretto quando c'è un solo progetto). Con più progetti che condividono
+    /// nomi di servizio, preferire `start(profile:inProject:)`.
     func start(profile: LaunchProfile) {
         if !natsUp { showNATSWarning = true }
         for service in services
         where profile.serviceNames.contains(service.config.name) && !service.processAlive {
+            service.start()
+        }
+    }
+
+    /// Avvia un profilo appartenente a un progetto specifico: il match è sul nome breve
+    /// MA ristretto ai servizi di quel progetto (namespaced id "progetto/nome"), così due
+    /// progetti con servizi omonimi non si confondono.
+    func start(profile: LaunchProfile, inProject projectName: String) {
+        if !natsUp { showNATSWarning = true }
+        for service in services
+        where service.config.projectName == projectName
+            && profile.serviceNames.contains(service.config.name)
+            && !service.processAlive {
             service.start()
         }
     }

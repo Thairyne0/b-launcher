@@ -13,8 +13,8 @@ enum CrashNotifier {
     /// `isAvailable`, in requestAuthorizationIfNeeded.
     static let delegate = NotificationDelegate()
 
-    /// Impostato dall'AppDelegate: riceve il nome (config.name) del servizio la cui
-    /// notifica di crash è stata toccata dall'utente.
+    /// Impostato dall'AppDelegate: riceve l'id (config.id, namespaced "Progetto/nome") del
+    /// servizio la cui notifica di crash è stata toccata dall'utente.
     static var onNotificationTap: ((String) -> Void)?
 
     static var isAvailable: Bool { Bundle.main.bundleIdentifier != nil }
@@ -26,8 +26,9 @@ enum CrashNotifier {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    /// `service` è il nome visualizzato (usato nel titolo); `serviceID` è config.name,
-    /// portato nello userInfo per il deep-link al tap (AppModel.revealService lavora per nome breve).
+    /// `service` è il nome visualizzato (usato nel titolo); `serviceID` è config.id
+    /// (namespaced), portato nello userInfo per il deep-link al tap (AppModel.revealService
+    /// fa match esatto sull'id, con fallback sul nome breve per notifiche pre-namespacing).
     static func notifyCrash(service: String, serviceID: String, exitCode: Int32) {
         guard isAvailable else { return }
         let content = UNMutableNotificationContent()

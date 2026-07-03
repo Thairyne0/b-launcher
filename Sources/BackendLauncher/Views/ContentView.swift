@@ -34,9 +34,17 @@ struct ContentView: View {
         } message: {
             Text("Tutti i processi verranno terminati.")
         }
-        // Deep-link da notifica di crash: torna sempre alla griglia per mostrare
-        // il terminale appena espanso da AppModel.revealService.
-        .onChange(of: model.revealRequestCount) { _, _ in selectionRaw = SidebarSelectionCoding.encode(.grid) }
+        // Deep-link da notifica di crash: naviga direttamente sul pannello dedicato del
+        // servizio rivelato da AppModel.revealService (expandedServices è già stato
+        // aggiornato lì, per coerenza con la griglia se l'utente torna indietro).
+        // Fallback alla griglia se per qualche motivo l'id non è disponibile.
+        .onChange(of: model.revealRequestCount) { _, _ in
+            if let id = model.lastRevealedServiceID {
+                selectionRaw = SidebarSelectionCoding.encode(.service(id))
+            } else {
+                selectionRaw = SidebarSelectionCoding.encode(.grid)
+            }
+        }
         .frame(minWidth: 760, minHeight: 480)
     }
 
@@ -84,15 +92,36 @@ struct ContentView: View {
                         }
                     }
                 }
-                Menu("Profili", systemImage: "list.bullet.rectangle") {
-                    ForEach(model.profiles) { profile in
-                        Button(profile.name) { model.start(profile: profile) }
-                    }
-                }
+                profilesMenu
                 Button("Avvia tutti", systemImage: "play.fill") { model.startAll() }
                     .disabled(model.services.allSatisfy { $0.processAlive })
                 Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
                     .disabled(!model.anyRunning)
+            }
+        }
+    }
+
+    /// Menu "Profili": submenu per progetto quando ce n'è più di uno (i profili sono
+    /// definiti per-progetto e i nomi dei servizi possono ripetersi tra progetti diversi),
+    /// piatto come prima quando c'è un solo progetto (o nell'init legacy senza store).
+    @ViewBuilder
+    private var profilesMenu: some View {
+        let groups = model.projectProfiles.filter { !$0.profiles.isEmpty }
+        if groups.count > 1 {
+            Menu("Profili", systemImage: "list.bullet.rectangle") {
+                ForEach(groups, id: \.projectName) { group in
+                    Menu(group.projectName) {
+                        ForEach(group.profiles) { profile in
+                            Button(profile.name) { model.start(profile: profile, inProject: group.projectName) }
+                        }
+                    }
+                }
+            }
+        } else {
+            Menu("Profili", systemImage: "list.bullet.rectangle") {
+                ForEach(model.profiles) { profile in
+                    Button(profile.name) { model.start(profile: profile) }
+                }
             }
         }
     }

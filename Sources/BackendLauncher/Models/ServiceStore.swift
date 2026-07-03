@@ -44,6 +44,25 @@ struct StoreFile: Codable {
     var projects: [StoredProject]
 }
 
+/// Errori di validazione delle mutazioni dello store: nomi duplicati (progetto/servizio,
+/// confronto case-insensitive) o progetto non trovato.
+enum StoreError: LocalizedError, Equatable {
+    case duplicateProjectName(String)
+    case duplicateServiceName(String)
+    case projectNotFound(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .duplicateProjectName(let name):
+            "Esiste già un progetto chiamato \"\(name)\"."
+        case .duplicateServiceName(let name):
+            "Esiste già un servizio chiamato \"\(name)\" in questo progetto."
+        case .projectNotFound(let id):
+            "Progetto \"\(id)\" non trovato."
+        }
+    }
+}
+
 /// Store persistente dei progetti/servizi. Sostituisce gradualmente la configurazione
 /// statica di `ServiceConfig`: al primo avvio (nessun file su disco) migra automaticamente
 /// la configurazione legacy "Skillera" hardcoded, poi vive interamente su disco.
@@ -162,6 +181,71 @@ final class ServiceStore {
         projects[index] = project
     }
 
+    // MARK: - Mutazioni (wizard add/edit/delete — Phase D)
+
+    /// Crea un nuovo progetto vuoto. Nome normalizzato (trim), non vuoto, univoco
+    /// (case-insensitive) tra i progetti esistenti. Salva su disco se riesce.
+    func addProject(named name: String) throws {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw StoreError.duplicateProjectName(name) }
+        guard !projects.contains(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
+            throw StoreError.duplicateProjectName(trimmed)
+        }
+        projects.append(StoredProject(name: trimmed, services: [], profiles: [], infraCheck: nil))
+        save()
+    }
+
+    /// Rimuove un progetto per id (nome). No-op silenzioso se non trovato (idempotente per
+    /// il chiamante — la UI non deve gestire un caso "già rimosso").
+    func removeProject(id: String) {
+        projects.removeAll { $0.id == id }
+        save()
+    }
+
+    /// Aggiunge un servizio a un progetto esistente. Nome univoco (case-insensitive)
+    /// all'interno del progetto.
+    func addService(_ service: StoredService, toProject id: String) throws {
+        guard let index = projects.firstIndex(where: { $0.id == id }) else {
+            throw StoreError.projectNotFound(id)
+        }
+        guard !projects[index].services.contains(where: {
+            $0.name.caseInsensitiveCompare(service.name) == .orderedSame
+        }) else {
+            throw StoreError.duplicateServiceName(service.name)
+        }
+        projects[index].services.append(service)
+        save()
+    }
+
+    /// Aggiorna (ed eventualmente rinomina) un servizio esistente. Se il nuovo nome
+    /// differisce dal vecchio, la nuova unicità viene ri-verificata tra gli altri servizi
+    /// del progetto (il servizio stesso è escluso dal controllo).
+    func updateService(named oldName: String, inProject id: String, with service: StoredService) throws {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == id }) else {
+            throw StoreError.projectNotFound(id)
+        }
+        guard let serviceIndex = projects[projectIndex].services.firstIndex(where: {
+            $0.name.caseInsensitiveCompare(oldName) == .orderedSame
+        }) else {
+            throw StoreError.projectNotFound(id)
+        }
+        let collision = projects[projectIndex].services.enumerated().contains { index, existing in
+            index != serviceIndex && existing.name.caseInsensitiveCompare(service.name) == .orderedSame
+        }
+        guard !collision else { throw StoreError.duplicateServiceName(service.name) }
+        projects[projectIndex].services[serviceIndex] = service
+        save()
+    }
+
+    /// Rimuove un servizio da un progetto. No-op silenzioso se progetto/servizio non trovati.
+    func removeService(named name: String, fromProject id: String) {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == id }) else { return }
+        projects[projectIndex].services.removeAll {
+            $0.name.caseInsensitiveCompare(name) == .orderedSame
+        }
+        save()
+    }
+
     /// Scrittura atomica, JSON pretty-printed con chiavi ordinate per diff stabili.
     func save() {
         let file = StoreFile(version: Self.currentVersion, projects: projects)
@@ -197,7 +281,8 @@ final class ServiceStore {
                 directory: "",
                 command: service.command,
                 readiness: readiness,
-                absoluteDirectory: URL(fileURLWithPath: service.directory)
+                absoluteDirectory: URL(fileURLWithPath: service.directory),
+                projectName: project.name
             )
         }
     }

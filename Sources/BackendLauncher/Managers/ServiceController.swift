@@ -50,11 +50,16 @@ final class ServiceController: Identifiable {
         self.config = config
         self.cwdOverride = cwd
         self.onCrash = onCrash
+        // config.id è namespaced ("Progetto/nome") quando il servizio appartiene a un
+        // progetto: "/" non è un carattere valido in un nome di file, e due progetti
+        // diversi con lo stesso nome breve altrimenti scriverebbero nello STESSO file di
+        // log sovrascrivendosi a vicenda. "-" mantiene il nome leggibile.
+        let logFileName = config.id.replacingOccurrences(of: "/", with: "-")
         let resolvedLogDirectory = logDirectory ?? (cwd != nil ? Self.testLogDirectory : nil)
         if let resolvedLogDirectory {
-            self.fileWriter = LogFileWriter(serviceName: config.name, directory: resolvedLogDirectory)
+            self.fileWriter = LogFileWriter(serviceName: logFileName, directory: resolvedLogDirectory)
         } else {
-            self.fileWriter = LogFileWriter(serviceName: config.name)
+            self.fileWriter = LogFileWriter(serviceName: logFileName)
         }
     }
 

@@ -41,6 +41,47 @@ import Testing
         let reserialized = FocusSelection.serialize(parsed, ordering: ordering)
         #expect(reserialized == "gateway,hr,bill")
     }
+
+    // MARK: - migrate (Phase D: bare-name -> namespaced id)
+
+    @Test func migrateResolvesBareNameToUniqueNamespacedID() {
+        let services = [
+            ServiceConfig(name: "gateway", directory: "", port: 4000, projectName: "Skillera"),
+            ServiceConfig(name: "id", directory: "", port: 4001, projectName: "Skillera"),
+        ]
+        let migrated = FocusSelection.migrate(["gateway"], services: services)
+        #expect(migrated == ["Skillera/gateway"])
+    }
+
+    @Test func migrateDropsAmbiguousBareNameAcrossProjects() {
+        let services = [
+            ServiceConfig(name: "gateway", directory: "", port: 4000, projectName: "ProjA"),
+            ServiceConfig(name: "gateway", directory: "", port: 5000, projectName: "ProjB"),
+        ]
+        let migrated = FocusSelection.migrate(["gateway"], services: services)
+        #expect(migrated.isEmpty)
+    }
+
+    @Test func migrateDropsBareNameWithNoMatch() {
+        let services = [ServiceConfig(name: "gateway", directory: "", port: 4000, projectName: "Skillera")]
+        let migrated = FocusSelection.migrate(["does-not-exist"], services: services)
+        #expect(migrated.isEmpty)
+    }
+
+    @Test func migratePassesThroughAlreadyNamespacedIDs() {
+        let services = [ServiceConfig(name: "gateway", directory: "", port: 4000, projectName: "Skillera")]
+        let migrated = FocusSelection.migrate(["Skillera/gateway"], services: services)
+        #expect(migrated == ["Skillera/gateway"])
+    }
+
+    @Test func migrateHandlesMixOfBareAndNamespacedTokens() {
+        let services = [
+            ServiceConfig(name: "gateway", directory: "", port: 4000, projectName: "Skillera"),
+            ServiceConfig(name: "id", directory: "", port: 4001, projectName: "Skillera"),
+        ]
+        let migrated = FocusSelection.migrate(["gateway", "Skillera/id"], services: services)
+        #expect(migrated == ["Skillera/gateway", "Skillera/id"])
+    }
 }
 
 @Suite struct SidebarSelectionCodingTests {

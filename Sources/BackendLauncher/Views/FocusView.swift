@@ -5,12 +5,14 @@ struct FocusView: View {
     var model: AppModel
     @AppStorage("focusServices") private var focusServicesRaw = "gateway,id"
 
-    private var selectedNames: Set<String> {
-        FocusSelection.parse(focusServicesRaw)
+    /// Id (namespaced) selezionati, migrando al volo eventuali token "vecchio stile"
+    /// (bare name senza "/", salvati prima del namespacing) verso l'id univoco corrispondente.
+    private var selectedIDs: Set<String> {
+        FocusSelection.migrate(FocusSelection.parse(focusServicesRaw), services: model.services.map(\.config))
     }
 
     private var selectedControllers: [ServiceController] {
-        model.services.filter { selectedNames.contains($0.config.name) }
+        model.services.filter { selectedIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -36,9 +38,9 @@ struct FocusView: View {
     }
 
     private func chip(for controller: ServiceController) -> some View {
-        let isSelected = selectedNames.contains(controller.config.name)
+        let isSelected = selectedIDs.contains(controller.id)
         return Button {
-            toggle(controller.config.name)
+            toggle(controller.id)
         } label: {
             HStack(spacing: 6) {
                 StatusDot(status: controller.status)
@@ -62,14 +64,16 @@ struct FocusView: View {
         .glassEffect(isSelected ? .regular.tint(.accentColor.opacity(0.4)) : .regular, in: .capsule)
     }
 
-    private func toggle(_ name: String) {
-        var names = selectedNames
-        if names.contains(name) {
-            names.remove(name)
+    private func toggle(_ id: String) {
+        var ids = selectedIDs
+        if ids.contains(id) {
+            ids.remove(id)
         } else {
-            names.insert(name)
+            ids.insert(id)
         }
-        focusServicesRaw = FocusSelection.serialize(names, ordering: model.services.map(\.config.name))
+        // Riserializza sempre in id namespaced pieni: dopo il primo toggle la persistenza
+        // "vecchio stile" (bare name) è completamente migrata.
+        focusServicesRaw = FocusSelection.serialize(ids, ordering: model.services.map(\.id))
     }
 
     @ViewBuilder
@@ -182,14 +186,39 @@ struct ServicePaneView: View {
 }
 
 /// Serializzazione pura Set<String> <-> stringa CSV per @AppStorage, con ordine stabile.
+/// Storicamente i token erano nomi brevi ("gateway"); dal namespacing multi-progetto
+/// (Phase D) i token persistiti sono id pieni ("Progetto/gateway"). `migrate` fa da ponte.
 enum FocusSelection {
     static func parse(_ raw: String) -> Set<String> {
         Set(raw.split(separator: ",").map(String.init).filter { !$0.isEmpty })
     }
 
-    /// Serializza rispettando l'ordine fornito in `ordering` (tipicamente l'ordine di ServiceConfig.all),
-    /// scartando nomi non presenti in `ordering`.
+    /// Serializza rispettando l'ordine fornito in `ordering` (tipicamente l'ordine dei
+    /// servizi correnti), scartando token non presenti in `ordering`.
     static func serialize(_ names: Set<String>, ordering: [String]) -> String {
         ordering.filter { names.contains($0) }.joined(separator: ",")
+    }
+
+    /// Migra un set di token grezzi (misto vecchio-stile bare-name / nuovo-stile id pieno)
+    /// verso id namespaced pieni, dato l'elenco dei servizi correnti.
+    /// - Un token che contiene "/" è già un id pieno: passa così com'è (anche se non
+    ///   corrisponde più a nessun servizio corrente — verrà scartato a valle dal filtro).
+    /// - Un token senza "/" (bare name storico) viene risolto sull'unico servizio il cui
+    ///   `config.name` corrisponde; se ambiguo (più progetti con lo stesso nome breve) o
+    ///   assente, il token viene silenziosamente scartato (non c'è modo sicuro di scegliere).
+    static func migrate(_ tokens: Set<String>, services: [ServiceConfig]) -> Set<String> {
+        var result: Set<String> = []
+        for token in tokens {
+            if token.contains("/") {
+                result.insert(token)
+            } else {
+                let matches = services.filter { $0.name == token }
+                if matches.count == 1 {
+                    result.insert(matches[0].id)
+                }
+                // ambiguo o assente: scartato
+            }
+        }
+        return result
     }
 }

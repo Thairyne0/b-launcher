@@ -26,8 +26,15 @@ struct ServiceConfig: Identifiable, Hashable {
     /// (usato dal bridge `ServiceStore.serviceConfigs(for:)`). `nil` = modalità legacy relativa
     /// a `projectRoot`, invariata per compatibilità con i test esistenti.
     var absoluteDirectory: URL?
+    /// Nome del progetto proprietario, per namespacing dell'id tra progetti diversi che
+    /// possono avere servizi omonimi (es. due "gateway"). Default "" per compatibilità:
+    /// tutti i test/init legacy che non lo valorizzano ottengono `id == name`, invariato.
+    var projectName: String = ""
 
-    var id: String { name }
+    /// Namespaced su `projectName` quando presente ("Progetto/nome"), altrimenti il nome
+    /// nudo — questo mantiene `id == name` per ogni config costruita senza `projectName`
+    /// (tutti i path legacy/test esistenti).
+    var id: String { projectName.isEmpty ? name : "\(projectName)/\(name)" }
     var displayName: String { "skill\(name)" }
     var workingDirectory: URL {
         absoluteDirectory ?? ServiceConfig.projectRoot.appendingPathComponent(directory)
@@ -44,22 +51,25 @@ struct ServiceConfig: Identifiable, Hashable {
     /// `port != nil` → `.tcpPort(port)`; `port == nil` → `.logMarker("successfully started")`
     /// (il marker hardcoded storico, invariato per i servizi solo-NATS legacy).
     init(name: String, directory: String, port: UInt16?,
-         command: String = "npm run start:dev", absoluteDirectory: URL? = nil) {
+         command: String = "npm run start:dev", absoluteDirectory: URL? = nil,
+         projectName: String = "") {
         self.name = name
         self.directory = directory
         self.readiness = port.map { .tcpPort($0) } ?? .logMarker("successfully started")
         self.command = command
         self.absoluteDirectory = absoluteDirectory
+        self.projectName = projectName
     }
 
     /// Init completo: readiness esplicita, per il bridge `ServiceStore` e i nuovi test.
     init(name: String, directory: String, command: String = "npm run start:dev",
-         readiness: ReadinessProbe, absoluteDirectory: URL? = nil) {
+         readiness: ReadinessProbe, absoluteDirectory: URL? = nil, projectName: String = "") {
         self.name = name
         self.directory = directory
         self.readiness = readiness
         self.command = command
         self.absoluteDirectory = absoluteDirectory
+        self.projectName = projectName
     }
 
     static let projectRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
@@ -84,7 +94,8 @@ struct ServiceConfig: Identifiable, Hashable {
         LaunchProfile(name: "Tutti", serviceNames: legacyAll.map(\.name)),
     ]
 
-    /// ContentView legge ancora `ServiceConfig.profiles` direttamente (toolbar Menu):
-    /// la migrazione a `model.profiles` è pianificata per la Fase C.
+    /// Alias legacy mantenuto solo per i test che verificano la configurazione statica
+    /// storica: la UI (ContentView) legge `model.profiles` / `model.projectProfiles`,
+    /// derivati dallo store, non più questo accessore.
     static var profiles: [LaunchProfile] { legacyProfiles }
 }

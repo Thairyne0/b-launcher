@@ -14,6 +14,13 @@ struct ServiceCardView: View {
         }
     }
 
+    /// Vero se la working directory del servizio non esiste su disco. Controllo cheap
+    /// (una singola stat) fatto a render time: nessuna cache necessaria, la UI si
+    /// aggiorna da sola alla prossima ridisegno se la cartella compare/sparisce.
+    private var directoryIsMissing: Bool {
+        !FileManager.default.fileExists(atPath: controller.config.workingDirectory.path)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -49,6 +56,13 @@ struct ServiceCardView: View {
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                    if directoryIsMissing {
+                        Label("cartella mancante", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.orange)
+                            .help(controller.config.workingDirectory.path)
+                    }
 
                     if !showTerminal && controller.processAlive {
                         Text(controller.logs.lines.last?.text ?? " ")
@@ -124,10 +138,10 @@ struct ServiceCardView: View {
             } label: {
                 Image(systemName: "play.fill")
             }
-            .disabled(controller.processAlive || status == .external)
-            .foregroundStyle(controller.processAlive || status == .external ? Color.secondary : Color.green)
+            .disabled(controller.processAlive || status == .external || directoryIsMissing)
+            .foregroundStyle(controller.processAlive || status == .external || directoryIsMissing ? Color.secondary : Color.green)
             .padding(4)
-            .help("Avvia")
+            .help(directoryIsMissing ? "Cartella mancante: impossibile avviare" : "Avvia")
 
             Button {
                 controller.stop()
