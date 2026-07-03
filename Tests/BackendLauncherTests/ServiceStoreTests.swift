@@ -56,6 +56,35 @@ import Testing
         #expect(reloaded.projects.first?.services.last?.name == "extra")
     }
 
+    @Test func futureVersionFileIsPreservedNotOverwritten() throws {
+        // File scritto da una versione futura dell'app (es. v2 con schema incompatibile):
+        // non va trattato come v1 né sovrascritto — va messo da parte per non perdere dati
+        // se l'utente fa downgrade.
+        let url = tempStoreURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        let futureProject = StoredProject(
+            name: "FutureProject",
+            services: [],
+            profiles: [],
+            infraCheck: nil
+        )
+        let futureFile = StoreFile(version: 99, projects: [futureProject])
+        let data = try JSONEncoder().encode(futureFile)
+        try data.write(to: url)
+
+        let store = ServiceStore(fileURL: url)
+
+        let futureVersionURL = url.appendingPathExtension("futureversion")
+        #expect(FileManager.default.fileExists(atPath: futureVersionURL.path))
+        let preserved = try Data(contentsOf: futureVersionURL)
+        #expect(preserved == data)
+
+        // Lo store corrente ricade sulla migrazione, non sul contenuto v99.
+        #expect(store.projects.count == 1)
+        #expect(store.projects.first?.name == "Skillera")
+    }
+
     @Test func corruptFileFallsBackToMigration() throws {
         let url = tempStoreURL()
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
@@ -87,5 +116,26 @@ import Testing
         #expect(atlas.workingDirectory.isFileURL)
         #expect(atlas.command == "npm run start:dev")
         #expect(atlas.workingDirectory.path.hasPrefix("/"))
+    }
+
+    @Test func bridgePreservesCustomLogMarkerString() throws {
+        // Il marker persistito su disco deve sopravvivere al bridge invariato, non essere
+        // forzato all'hardcoded "successfully started".
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        var project = try #require(store.projects.first)
+
+        let custom = StoredService(
+            name: "custom",
+            directory: "/tmp/custom",
+            command: "npm run start:dev",
+            readiness: StoredReadiness(kind: .logMarker, port: nil, marker: "custom-marker")
+        )
+        project.services.append(custom)
+        store.replaceProject(project)
+
+        let configs = store.serviceConfigs(for: project)
+        let customConfig = try #require(configs.first { $0.name == "custom" })
+        #expect(customConfig.readiness == .logMarker("custom-marker"))
     }
 }

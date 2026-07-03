@@ -6,6 +6,14 @@ struct ServiceCardView: View {
     var controller: ServiceController
     @Binding var showTerminal: Bool
 
+    private var readinessCaption: String {
+        switch controller.config.readiness {
+        case .tcpPort(let p): "porta \(p)"
+        case .logMarker: "via log"
+        case .processAlive: "sempre pronto"
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -34,7 +42,7 @@ struct ServiceCardView: View {
                         }
                     }
                     HStack(spacing: 4) {
-                        Text(controller.config.port.map { "porta \(String($0))" } ?? "via NATS")
+                        Text(readinessCaption)
                         Text("·")
                         Text(controller.status.label)
                             .foregroundStyle(controller.status.color)

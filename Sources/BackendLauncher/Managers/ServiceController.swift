@@ -18,10 +18,8 @@ final class ServiceController: Identifiable {
     private nonisolated(unsafe) var statsTask: Task<Void, Never>?
     private var lastCPUSeconds: Double?
 
-    // servizi solo-NATS: pronto quando il log Nest annuncia l'avvio
+    // servizi con readiness .logMarker: pronto quando il log annuncia l'avvio
     private(set) var readyMarkerSeen = false
-
-    private static let readyMarker = "successfully started"
 
     private var process: SpawnedProcess?
     private var stopRequested = false
@@ -69,9 +67,20 @@ final class ServiceController: Identifiable {
     var processID: pid_t? { processAlive ? process?.pid : nil }
 
     var status: ServiceStatus {
-        // Per i servizi HTTP la prontezza è la porta aperta; per quelli solo-NATS
-        // è il marker nei log. Il segnale confluisce nello stesso ingresso di derive.
-        let ready = config.port != nil ? portOpen : readyMarkerSeen
+        // Il segnale di prontezza dipende dal tipo di probe; confluisce nello stesso
+        // ingresso "ready" di derive (che gestisce processAlive/stopRequested/exitCode).
+        // Nota: .processAlive usa `processAlive` stesso come segnale — MAI `true` costante,
+        // altrimenti prima dello spawn (processAlive=false, ready=true) derive() produrrebbe
+        // un fantasma .external (porta "aperta" ma nessun processo nostro).
+        let ready: Bool
+        switch config.readiness {
+        case .tcpPort:
+            ready = portOpen
+        case .logMarker:
+            ready = readyMarkerSeen
+        case .processAlive:
+            ready = processAlive
+        }
         return ServiceStatus.derive(processAlive: processAlive, portOpen: ready,
                                     stopRequested: stopRequested, lastExitCode: lastExitCode)
     }
@@ -96,7 +105,8 @@ final class ServiceController: Identifiable {
                 cwd: cwd,
                 onChunk: { [weak self] chunk in
                     guard let self, self.epoch == myEpoch else { return }
-                    if !self.readyMarkerSeen, chunk.localizedCaseInsensitiveContains(Self.readyMarker) {
+                    if case .logMarker(let marker) = self.config.readiness,
+                       !self.readyMarkerSeen, chunk.localizedCaseInsensitiveContains(marker) {
                         self.readyMarkerSeen = true
                     }
                     self.logs.ingest(chunk)

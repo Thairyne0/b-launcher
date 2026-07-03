@@ -143,6 +143,34 @@ private func fakeConfig(command: String) -> ServiceConfig {
         #expect(cleared)
     }
 
+    @Test func customLogMarkerTurnsRunning() async {
+        // readiness .logMarker con stringa custom (non l'hardcoded "successfully started"):
+        // il marker deve venire dalla config, non da una costante fissa nel controller.
+        let config = ServiceConfig(name: "fake", directory: "", command:
+                                   #"sh -c "echo PRONTO-XYZ; sleep 60""#,
+                                   readiness: .logMarker("PRONTO-XYZ"))
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.start()
+        let running = await waitUntil { c.status == .running }
+        #expect(running)
+        c.stop()
+        let stopped = await waitUntil { c.status == .stopped }
+        #expect(stopped)
+    }
+
+    @Test func processAliveKindIsRunningImmediately() async {
+        // readiness .processAlive: nessun segnale esterno necessario, "running" appena spawnato.
+        let config = ServiceConfig(name: "fake", directory: "", command: "sleep 60",
+                                   readiness: .processAlive)
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.start()
+        let running = await waitUntil { c.status == .running }
+        #expect(running)
+        c.stop()
+        let stopped = await waitUntil { c.status == .stopped }
+        #expect(stopped)
+    }
+
     @Test func restartDoesNotInvokeOnCrash() async {
         var invoked = false
         let c = ServiceController(config: fakeConfig(command: "sleep 60"), cwd: "/tmp",

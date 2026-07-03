@@ -73,18 +73,38 @@ final class ServiceStore {
         } catch {
             // Se non riusciamo nemmeno a creare la directory, non c'è molto altro da fare:
             // il successivo tentativo di scrittura fallirà silenziosamente (best-effort).
+            print("[ServiceStore] impossibile creare la directory di \(url.path): \(error)")
         }
 
         if FileManager.default.fileExists(atPath: url.path) {
             if let data = try? Data(contentsOf: url),
                let decoded = try? JSONDecoder().decode(StoreFile.self, from: data) {
-                self.projects = decoded.projects
-                return
+                if decoded.version > Self.currentVersion {
+                    // File scritto da una versione futura dell'app: NON trattarlo come v1
+                    // (schema potenzialmente incompatibile) e NON sovrascriverlo — mettilo
+                    // da parte così un downgrade non perde silenziosamente i dati dell'utente.
+                    print("[ServiceStore] trovato services.json con version \(decoded.version) > \(Self.currentVersion) (corrente): preservato, ricado sulla migrazione")
+                    let futureVersionURL = url.appendingPathExtension("futureversion")
+                    try? FileManager.default.removeItem(at: futureVersionURL)
+                    do {
+                        try FileManager.default.moveItem(at: url, to: futureVersionURL)
+                    } catch {
+                        print("[ServiceStore] impossibile preservare il file di versione futura: \(error)")
+                    }
+                } else {
+                    self.projects = decoded.projects
+                    return
+                }
+            } else {
+                // File presente ma non decodificabile: mettilo da parte e ricadi sulla migrazione.
+                let corruptURL = url.appendingPathExtension("corrupt")
+                try? FileManager.default.removeItem(at: corruptURL)
+                do {
+                    try FileManager.default.moveItem(at: url, to: corruptURL)
+                } catch {
+                    print("[ServiceStore] impossibile mettere da parte il file corrotto: \(error)")
+                }
             }
-            // File presente ma non decodificabile: mettilo da parte e ricadi sulla migrazione.
-            let corruptURL = url.appendingPathExtension("corrupt")
-            try? FileManager.default.removeItem(at: corruptURL)
-            try? FileManager.default.moveItem(at: url, to: corruptURL)
         }
 
         self.projects = [Self.migrateFromLegacy()]
@@ -134,21 +154,36 @@ final class ServiceStore {
         let file = StoreFile(version: Self.currentVersion, projects: projects)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(file) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        guard let data = try? encoder.encode(file) else {
+            print("[ServiceStore] impossibile serializzare lo store in JSON")
+            return
+        }
+        do {
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            print("[ServiceStore] impossibile scrivere \(fileURL.path): \(error)")
+        }
     }
 
     /// Bridge verso il tipo runtime `ServiceConfig` usato da `ServiceController`.
-    /// Fase A: nessun cambio di comportamento — readiness `.port` mantiene `port` valorizzata,
-    /// `.logMarker`/`.processAlive` mantengono `port == nil` (comportamento derivato invariato
-    /// in `ServiceController.status`).
+    /// Fase B: mappa `StoredReadiness` direttamente su `ReadinessProbe` — il marker persistito
+    /// su disco sopravvive intatto (non più forzato all'hardcoded "successfully started").
     func serviceConfigs(for project: StoredProject) -> [ServiceConfig] {
         project.services.map { service in
-            ServiceConfig(
+            let readiness: ReadinessProbe
+            switch service.readiness.kind {
+            case .port:
+                readiness = .tcpPort(service.readiness.port ?? 0)
+            case .logMarker:
+                readiness = .logMarker(service.readiness.marker ?? "successfully started")
+            case .processAlive:
+                readiness = .processAlive
+            }
+            return ServiceConfig(
                 name: service.name,
                 directory: "",
-                port: service.readiness.kind == .port ? service.readiness.port : nil,
                 command: service.command,
+                readiness: readiness,
                 absoluteDirectory: URL(fileURLWithPath: service.directory)
             )
         }
