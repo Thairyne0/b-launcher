@@ -27,11 +27,15 @@ final class ServiceController: Identifiable {
     /// del VECCHIO processo può arrivare quando il NUOVO è già partito — va scartato.
     private var epoch = 0
     private let cwdOverride: String?
+    private let onCrash: ((String, Int32) -> Void)?
 
     /// `cwd` iniettabile solo per i test; in produzione usa config.workingDirectory.
-    init(config: ServiceConfig, cwd: String? = nil) {
+    /// `onCrash` notifica (nome visualizzato, exit code) quando il processo muore
+    /// senza che sia stato l'utente a fermarlo né parte di un restart.
+    init(config: ServiceConfig, cwd: String? = nil, onCrash: ((String, Int32) -> Void)? = nil) {
         self.config = config
         self.cwdOverride = cwd
+        self.onCrash = onCrash
     }
 
     nonisolated var id: String { config.id }
@@ -100,6 +104,7 @@ final class ServiceController: Identifiable {
     }
 
     private func handleExit(_ code: Int32) {
+        let isCrash = !stopRequested && !pendingRestart
         processAlive = false
         process = nil
         startedAt = nil
@@ -107,6 +112,9 @@ final class ServiceController: Identifiable {
         readyMarkerSeen = false
         logs.flushPartial()
         logs.ingest("[launcher] ── processo terminato (exit \(code)) ──\n")
+        if isCrash {
+            onCrash?(config.displayName, code)
+        }
         if pendingRestart {
             pendingRestart = false
             start()

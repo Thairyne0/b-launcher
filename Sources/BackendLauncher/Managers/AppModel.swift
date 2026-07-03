@@ -11,11 +11,15 @@ final class AppModel {
 
     private var pollTask: Task<Void, Never>?
 
-    /// `cwd` e `pollingEnabled` iniettabili solo per i test.
+    /// `cwd`, `pollingEnabled` e `crashNotificationsEnabled` iniettabili solo per i test.
     init(configs: [ServiceConfig] = ServiceConfig.all,
          cwd: String? = nil,
-         pollingEnabled: Bool = true) {
-        services = configs.map { ServiceController(config: $0, cwd: cwd) }
+         pollingEnabled: Bool = true,
+         crashNotificationsEnabled: Bool = true) {
+        let onCrash: ((String, Int32) -> Void)? = crashNotificationsEnabled
+            ? { name, code in CrashNotifier.notifyCrash(service: name, exitCode: code) }
+            : nil
+        services = configs.map { ServiceController(config: $0, cwd: cwd, onCrash: onCrash) }
         if pollingEnabled { startPolling() }
     }
 

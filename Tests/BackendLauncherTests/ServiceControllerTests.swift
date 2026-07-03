@@ -107,4 +107,39 @@ private func fakeConfig(command: String) -> ServiceConfig {
         c.stop()
         _ = await waitUntil { c.status == .stopped }
     }
+
+    @Test func crashInvokesOnCrashCallback() async {
+        var captured: (String, Int32)?
+        let c = ServiceController(config: fakeConfig(command: "exit 9"), cwd: "/tmp",
+                                  onCrash: { captured = ($0, $1) })
+        c.start()
+        _ = await waitUntil { c.status == .crashed(exitCode: 9) }
+        #expect(captured?.0 == "skillfake")
+        #expect(captured?.1 == 9)
+    }
+
+    @Test func userStopDoesNotInvokeOnCrash() async {
+        var invoked = false
+        let c = ServiceController(config: fakeConfig(command: "sleep 60"), cwd: "/tmp",
+                                  onCrash: { _, _ in invoked = true })
+        c.start()
+        _ = await waitUntil { c.status == .starting }
+        c.stop()
+        _ = await waitUntil { c.status == .stopped }
+        #expect(!invoked)
+    }
+
+    @Test func restartDoesNotInvokeOnCrash() async {
+        var invoked = false
+        let c = ServiceController(config: fakeConfig(command: "sleep 60"), cwd: "/tmp",
+                                  onCrash: { _, _ in invoked = true })
+        c.start()
+        _ = await waitUntil { c.processID != nil }
+        c.restart()
+        let restarted = await waitUntil { c.status == .starting || c.status == .running }
+        #expect(restarted)
+        #expect(!invoked)
+        c.stop()
+        _ = await waitUntil { c.status == .stopped }
+    }
 }
