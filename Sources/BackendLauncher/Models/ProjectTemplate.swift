@@ -21,11 +21,14 @@ struct ProjectTemplate: Codable {
 /// Errori di decodifica/encoding del template.
 enum ProjectTemplateError: LocalizedError, Equatable {
     case unsupportedVersion(Int)
+    case unsafeRelativePath(String)
 
     var errorDescription: String? {
         switch self {
         case .unsupportedVersion(let version):
             "Questo template è stato creato da una versione più recente dell'app (versione \(version)): aggiorna Backend Launcher per importarlo."
+        case .unsafeRelativePath(let path):
+            "Il template contiene un percorso non sicuro (\"\(path)\"): i percorsi relativi non possono uscire dalla cartella scelta."
         }
     }
 }
@@ -63,12 +66,19 @@ enum ProjectTemplateCodec {
     /// Import: ricostruisce `StoredProject` risolvendo i relativi su `root`; le entry
     /// "abs:"-prefixed vengono usate as-is (assolute). Il nome del progetto può essere
     /// sovrascritto (utile in caso di collisione col nome esistente).
-    static func makeProject(from template: ProjectTemplate, root: URL, nameOverride: String?) -> StoredProject {
+    /// I path relativi con componenti ".." vengono RIFIUTATI: un template artigianale
+    /// non deve poter risolvere directory fuori dalla root scelta dall'utente.
+    static func makeProject(from template: ProjectTemplate, root: URL, nameOverride: String?) throws -> StoredProject {
         let standardizedRoot = root.standardizedFileURL
-        let services = template.services.map { templateService -> StoredService in
-            StoredService(
+        let services = try template.services.map { templateService -> StoredService in
+            let relative = templateService.relativeDirectory
+            if !relative.hasPrefix(absoluteMarkerPrefix),
+               relative.components(separatedBy: "/").contains("..") {
+                throw ProjectTemplateError.unsafeRelativePath(relative)
+            }
+            return StoredService(
                 name: templateService.name,
-                directory: resolvedDirectory(relativeDirectory: templateService.relativeDirectory, root: standardizedRoot),
+                directory: resolvedDirectory(relativeDirectory: relative, root: standardizedRoot),
                 command: templateService.command,
                 readiness: templateService.readiness
             )

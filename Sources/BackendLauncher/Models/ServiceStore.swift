@@ -276,7 +276,7 @@ final class ServiceStore {
     @discardableResult
     func importTemplate(_ data: Data, root: URL, nameOverride: String? = nil) throws -> StoredProject {
         let template = try ProjectTemplateCodec.decode(data)
-        let project = ProjectTemplateCodec.makeProject(from: template, root: root, nameOverride: nameOverride)
+        let project = try ProjectTemplateCodec.makeProject(from: template, root: root, nameOverride: nameOverride)
         guard !projects.contains(where: { $0.name.caseInsensitiveCompare(project.name) == .orderedSame }) else {
             throw StoreError.duplicateProjectName(project.name)
         }

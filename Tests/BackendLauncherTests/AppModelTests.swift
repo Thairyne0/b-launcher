@@ -201,6 +201,29 @@ import Testing
         _ = await waitUntil { !after.processAlive }
     }
 
+    @Test func pollAppliesPendingConfigWhenServiceStops() async throws {
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: true, crashNotificationsEnabled: false)
+        let running = try #require(model.services.first { $0.id == "ProjA/svc" })
+        running.start()
+        _ = await waitUntil { running.processAlive }
+
+        var project = store.projects.first { $0.name == "ProjA" }!
+        project.services[0].command = "sleep 120"
+        store.replaceProject(project)
+        store.save()
+        model.reloadFromStore()
+        #expect(model.pendingConfigChanges.contains("ProjA/svc"))
+
+        running.stop()
+        // Il poll (tick da 2s) deve applicare la modifica e togliere il pending DA SOLO.
+        let applied = await waitUntil(timeout: 12) {
+            model.pendingConfigChanges.isEmpty
+                && model.services.first { $0.id == "ProjA/svc" }?.config.command == "sleep 120"
+        }
+        #expect(applied)
+    }
+
     @Test func reloadRemovedWhileRunningStopsProcess() async throws {
         let store = try makeTwoProjectStore()
         let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)

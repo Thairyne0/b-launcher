@@ -39,7 +39,7 @@ import Testing
 
         // makeProject su una root DIVERSA deve ribasare correttamente i path.
         let newRoot = URL(fileURLWithPath: "/Users/colleague/repos/Skillera")
-        let rebuilt = ProjectTemplateCodec.makeProject(from: template, root: newRoot, nameOverride: nil)
+        let rebuilt = try ProjectTemplateCodec.makeProject(from: template, root: newRoot, nameOverride: nil)
 
         #expect(rebuilt.name == "Skillera")
         let rebuiltGateway = try #require(rebuilt.services.first { $0.name == "gateway" })
@@ -72,7 +72,7 @@ import Testing
 
         // Import su una root differente: l'entry "abs:" resta assoluta as-is, non viene ribasata.
         let newRoot = URL(fileURLWithPath: "/Users/colleague/repos/Mixed")
-        let rebuilt = ProjectTemplateCodec.makeProject(from: template, root: newRoot, nameOverride: nil)
+        let rebuilt = try ProjectTemplateCodec.makeProject(from: template, root: newRoot, nameOverride: nil)
 
         let rebuiltInside = try #require(rebuilt.services.first { $0.name == "inside" })
         #expect(rebuiltInside.directory == "/Users/colleague/repos/Mixed/inside-service")
@@ -142,7 +142,28 @@ import Testing
                                     profiles: [], infraCheck: nil)
         let template = ProjectTemplateCodec.makeTemplate(from: project, root: root)
 
-        let rebuilt = ProjectTemplateCodec.makeProject(from: template, root: root, nameOverride: "Skillera (colleague)")
+        let rebuilt = try ProjectTemplateCodec.makeProject(from: template, root: root, nameOverride: "Skillera (colleague)")
         #expect(rebuilt.name == "Skillera (colleague)")
+    }
+
+    @Test func makeProjectRejectsParentTraversalPaths() throws {
+        // Template artigianale con "..": non deve poter risolvere fuori dalla root scelta.
+        let template = ProjectTemplate(
+            templateVersion: 1,
+            name: "Evil",
+            services: [ProjectTemplate.TemplateService(
+                name: "svc",
+                relativeDirectory: "../../etc",
+                command: "true",
+                readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil)
+            )],
+            profiles: [],
+            infraCheck: nil
+        )
+        #expect(throws: ProjectTemplateError.unsafeRelativePath("../../etc")) {
+            _ = try ProjectTemplateCodec.makeProject(from: template,
+                                                     root: URL(fileURLWithPath: "/tmp/root"),
+                                                     nameOverride: nil)
+        }
     }
 }
