@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Card glass di un backend: stato, controlli, terminale espandibile.
@@ -30,6 +31,11 @@ struct ServiceCardView: View {
                         Text("·")
                         Text(controller.status.label)
                             .foregroundStyle(controller.status.color)
+                        if let stats = controller.stats, controller.processAlive {
+                            Text("·")
+                            Text("CPU \(stats.cpuPercent, specifier: "%.0f")% · \(stats.rssMB, specifier: "%.0f") MB")
+                                .monospacedDigit()
+                        }
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -63,6 +69,22 @@ struct ServiceCardView: View {
             }
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .contextMenu {
+            Button("Apri directory nel Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([controller.config.workingDirectory])
+            }
+            if FileManager.default.fileExists(atPath: "/Applications/Visual Studio Code.app") {
+                Button("Apri in VS Code") {
+                    NSWorkspace.shared.open([controller.config.workingDirectory],
+                                            withApplicationAt: URL(fileURLWithPath: "/Applications/Visual Studio Code.app"),
+                                            configuration: NSWorkspace.OpenConfiguration())
+                }
+            }
+            Button("Copia percorso") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(controller.config.workingDirectory.path, forType: .string)
+            }
+        }
     }
 
     @ViewBuilder

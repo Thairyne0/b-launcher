@@ -23,6 +23,7 @@ enum ProcessStats {
 
         // proc_listpids vuole un buffer di pid_t; dimensioniamo con margine
         // perché il gruppo può crescere tra le due chiamate.
+        // margine per pid aggiunti al gruppo tra la chiamata di sizing e quella di riempimento
         let capacity = Int(sizeNeeded) / MemoryLayout<pid_t>.size + 16
         var buffer = [pid_t](repeating: 0, count: capacity)
         let bytesReturned = buffer.withUnsafeMutableBytes { ptr -> Int32 in
@@ -37,6 +38,7 @@ enum ProcessStats {
 
     /// CPU cumulativa (user+system, secondi) e RSS correnti di un singolo pid, via proc_pid_rusage.
     /// nil se il pid non esiste o non è leggibile.
+    /// ATTENZIONE: syscall bloccanti — chiamare fuori dal MainActor.
     static func rusage(pid: pid_t) -> (cpuSeconds: Double, rssBytes: UInt64)? {
         var info = rusage_info_v4()
         let result = withUnsafeMutablePointer(to: &info) { ptr -> Int32 in
@@ -54,6 +56,7 @@ enum ProcessStats {
     }
 
     /// Somma di rusage su tutto il gruppo.
+    /// ATTENZIONE: syscall bloccanti — chiamare fuori dal MainActor.
     static func groupTotals(pgid: pid_t) -> (cpuSeconds: Double, rssBytes: UInt64) {
         let pids = groupPIDs(pgid: pgid)
         var totalCPU = 0.0

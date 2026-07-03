@@ -129,6 +129,20 @@ private func fakeConfig(command: String) -> ServiceConfig {
         #expect(!invoked)
     }
 
+    @Test func statsAppearWhileRunningAndClearOnStop() async {
+        let c = ServiceController(config: fakeConfig(command: "sleep 60"), cwd: "/tmp")
+        c.start()
+        let gotStats = await waitUntil(timeout: 15) { c.stats != nil }
+        #expect(gotStats)
+        if let s = c.stats {
+            #expect(s.rssMB > 0)
+            #expect(s.cpuPercent >= 0)
+        }
+        c.stop()
+        let cleared = await waitUntil { c.status == .stopped && c.stats == nil }
+        #expect(cleared)
+    }
+
     @Test func restartDoesNotInvokeOnCrash() async {
         var invoked = false
         let c = ServiceController(config: fakeConfig(command: "sleep 60"), cwd: "/tmp",

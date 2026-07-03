@@ -13,6 +13,11 @@ final class ServiceController: Identifiable {
     private(set) var startedAt: Date?
     var portOpen = false  // aggiornato dal poller di AppModel
 
+    /// Statistiche CPU/RAM del process group corrente (nil finché non c'è una seconda lettura).
+    private(set) var stats: ProcessStats.Sample?
+    private var statsTask: Task<Void, Never>?
+    private var lastCPUSeconds: Double?
+
     // servizi solo-NATS: pronto quando il log Nest annuncia l'avvio
     private(set) var readyMarkerSeen = false
 
@@ -81,9 +86,34 @@ final class ServiceController: Identifiable {
             )
             processAlive = true
             startedAt = Date()
+            startStatsSampling()
         } catch {
             logs.ingest("[launcher] errore avvio: \(error.localizedDescription)\n")
             lastExitCode = -1
+        }
+    }
+
+    private func startStatsSampling() {
+        statsTask?.cancel()
+        lastCPUSeconds = nil
+        guard let pid = process?.pid else { return }
+        statsTask = Task { [weak self] in
+            let interval: TimeInterval = 2
+            while !Task.isCancelled {
+                // syscall bloccanti fuori dal MainActor
+                let totals = await Task.detached(priority: .utility) {
+                    ProcessStats.groupTotals(pgid: pid)
+                }.value
+                guard let self, !Task.isCancelled else { return }
+                if let previous = self.lastCPUSeconds {
+                    self.stats = ProcessStats.sample(previousCPUSeconds: previous,
+                                                     currentCPUSeconds: totals.cpuSeconds,
+                                                     interval: interval,
+                                                     rssBytes: totals.rssBytes)
+                }
+                self.lastCPUSeconds = totals.cpuSeconds
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            }
         }
     }
 
@@ -110,6 +140,10 @@ final class ServiceController: Identifiable {
         startedAt = nil
         lastExitCode = code
         readyMarkerSeen = false
+        statsTask?.cancel()
+        statsTask = nil
+        stats = nil
+        lastCPUSeconds = nil
         logs.flushPartial()
         logs.ingest("[launcher] ── processo terminato (exit \(code)) ──\n")
         if isCrash {
