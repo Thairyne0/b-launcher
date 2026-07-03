@@ -85,6 +85,9 @@ struct NATSIndicator: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .fixedSize()
         .help(up ? "NATS raggiungibile su localhost:4222"
                  : "NATS NON raggiungibile (localhost:4222) — i backend non comunicano")
     }
