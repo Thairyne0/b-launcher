@@ -30,6 +30,12 @@ struct ServiceConfig: Identifiable, Hashable {
     /// possono avere servizi omonimi (es. due "gateway"). Default "" per compatibilità:
     /// tutti i test/init legacy che non lo valorizzano ottengono `id == name`, invariato.
     var projectName: String = ""
+    /// Colore accento del progetto proprietario (hex, es. "#4F8EF7"), da `StoredProject`.
+    /// Default `nil` in tutti gli init esistenti — nessuna rottura per i chiamanti storici.
+    let accentColorHex: String?
+    /// Nome SF Symbol da mostrare al posto dell'icona di default, da `StoredService`.
+    /// Default `nil` in tutti gli init esistenti — nessuna rottura per i chiamanti storici.
+    let symbolName: String?
 
     /// Namespaced su `projectName` quando presente ("Progetto/nome"), altrimenti il nome
     /// nudo — questo mantiene `id == name` per ogni config costruita senza `projectName`
@@ -52,24 +58,29 @@ struct ServiceConfig: Identifiable, Hashable {
     /// (il marker hardcoded storico, invariato per i servizi solo-NATS legacy).
     init(name: String, directory: String, port: UInt16?,
          command: String = "npm run start:dev", absoluteDirectory: URL? = nil,
-         projectName: String = "") {
+         projectName: String = "", accentColorHex: String? = nil, symbolName: String? = nil) {
         self.name = name
         self.directory = directory
         self.readiness = port.map { .tcpPort($0) } ?? .logMarker("successfully started")
         self.command = command
         self.absoluteDirectory = absoluteDirectory
         self.projectName = projectName
+        self.accentColorHex = accentColorHex
+        self.symbolName = symbolName
     }
 
     /// Init completo: readiness esplicita, per il bridge `ServiceStore` e i nuovi test.
     init(name: String, directory: String, command: String = "npm run start:dev",
-         readiness: ReadinessProbe, absoluteDirectory: URL? = nil, projectName: String = "") {
+         readiness: ReadinessProbe, absoluteDirectory: URL? = nil, projectName: String = "",
+         accentColorHex: String? = nil, symbolName: String? = nil) {
         self.name = name
         self.directory = directory
         self.readiness = readiness
         self.command = command
         self.absoluteDirectory = absoluteDirectory
         self.projectName = projectName
+        self.accentColorHex = accentColorHex
+        self.symbolName = symbolName
     }
 
     static let projectRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")

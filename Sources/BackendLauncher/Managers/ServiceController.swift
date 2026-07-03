@@ -69,6 +69,9 @@ final class ServiceController: Identifiable {
 
     nonisolated var id: String { config.id }
 
+    /// URL del file di log su disco per questo servizio (per "Rivela nel Finder" o simili).
+    var logFileURL: URL { fileWriter.fileURL }
+
     var processID: pid_t? { processAlive ? process?.pid : nil }
 
     var status: ServiceStatus {

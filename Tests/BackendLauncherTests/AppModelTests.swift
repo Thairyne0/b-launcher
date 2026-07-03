@@ -313,6 +313,78 @@ import Testing
         _ = await waitUntil { !model.anyRunning }
     }
 
+    // MARK: - restartProject / restartAll / clearProjectTerminals
+
+    @Test func restartProjectRestartsOnlyAliveServicesOfThatProject() async throws {
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        let aliveA = try #require(model.services.first { $0.id == "ProjA/svc" })
+        let stoppedB = try #require(model.services.first { $0.id == "ProjB/svc" })
+        aliveA.start()
+        _ = await waitUntil { aliveA.processAlive }
+        let firstPID = aliveA.processID
+        #expect(!stoppedB.processAlive)
+
+        model.restartProject(named: "ProjA")
+
+        // Il servizio vivo viene riavviato: resta vivo ma con un PID diverso.
+        let restarted = await waitUntil { aliveA.processAlive && aliveA.processID != firstPID }
+        #expect(restarted)
+        // Il servizio fermo di ProjB non viene toccato (resta fermo, non avviato).
+        #expect(!stoppedB.processAlive)
+
+        model.stopAll()
+        _ = await waitUntil { !model.anyRunning }
+    }
+
+    @Test func restartProjectLeavesNonAliveServicesOfThatProjectStopped() async throws {
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        let stoppedA = try #require(model.services.first { $0.id == "ProjA/svc" })
+        #expect(!stoppedA.processAlive)
+
+        model.restartProject(named: "ProjA")
+
+        // Diamo un attimo per essere sicuri che nessuno start asincrono lo faccia partire.
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(!stoppedA.processAlive)
+    }
+
+    @Test func restartAllRestartsOnlyAliveServicesAcrossProjects() async throws {
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        let aliveA = try #require(model.services.first { $0.id == "ProjA/svc" })
+        let stoppedB = try #require(model.services.first { $0.id == "ProjB/svc" })
+        aliveA.start()
+        _ = await waitUntil { aliveA.processAlive }
+        let firstPID = aliveA.processID
+
+        model.restartAll()
+
+        let restarted = await waitUntil { aliveA.processAlive && aliveA.processID != firstPID }
+        #expect(restarted)
+        #expect(!stoppedB.processAlive)
+
+        model.stopAll()
+        _ = await waitUntil { !model.anyRunning }
+    }
+
+    @Test func clearProjectTerminalsClearsOnlyThatProjectsLogs() throws {
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        let a = try #require(model.services.first { $0.id == "ProjA/svc" })
+        let b = try #require(model.services.first { $0.id == "ProjB/svc" })
+        a.logs.ingest("linea A\n")
+        b.logs.ingest("linea B\n")
+        #expect(!a.logs.lines.isEmpty)
+        #expect(!b.logs.lines.isEmpty)
+
+        model.clearProjectTerminals(named: "ProjA")
+
+        #expect(a.logs.lines.isEmpty)
+        #expect(!b.logs.lines.isEmpty)
+    }
+
     @Test func reloadPrunesExpandedServices() throws {
         let store = try makeTwoProjectStore()
         let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)

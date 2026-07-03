@@ -583,6 +583,116 @@ import Testing
         }
     }
 
+    // MARK: - accentColorHex / symbolName (schema additivo, versione resta 1)
+
+    @Test func accentColorHexAndSymbolNameRoundTripThroughSaveAndReload() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        var project = try #require(store.projects.first)
+        project.accentColorHex = "#4F8EF7"
+        project.services[0].symbolName = "bolt.fill"
+        store.replaceProject(project)
+        store.save()
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.accentColorHex == "#4F8EF7")
+        #expect(reloaded.projects.first?.services.first?.symbolName == "bolt.fill")
+    }
+
+    @Test func oldV1JSONWithoutNewKeysDecodesFieldsAsNil() throws {
+        // File scritto da una versione precedente dell'app: nessuna chiave accentColorHex/
+        // symbolName presente. Deve decodificare senza errori con i nuovi campi a `nil`
+        // (schema additivo, version resta 1 — nessuna migrazione necessaria).
+        let url = tempStoreURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        let oldJSON = """
+        {
+          "version": 1,
+          "projects": [
+            {
+              "name": "Legacy",
+              "services": [
+                {
+                  "name": "svc",
+                  "directory": "/tmp/svc",
+                  "command": "npm run start:dev",
+                  "readiness": { "kind": "processAlive" }
+                }
+              ],
+              "profiles": [],
+              "infraCheck": null
+            }
+          ]
+        }
+        """
+        try Data(oldJSON.utf8).write(to: url)
+
+        let store = ServiceStore(fileURL: url)
+
+        #expect(store.projects.count == 1)
+        let project = try #require(store.projects.first)
+        #expect(project.name == "Legacy")
+        #expect(project.accentColorHex == nil)
+        #expect(project.services.first?.symbolName == nil)
+
+        // Non trattato come corrotto/futuro: nessun file .corrupt/.futureversion generato.
+        #expect(!FileManager.default.fileExists(atPath: url.appendingPathExtension("corrupt").path))
+        #expect(!FileManager.default.fileExists(atPath: url.appendingPathExtension("futureversion").path))
+    }
+
+    @Test func serviceConfigsBridgePopulatesAccentColorAndSymbolName() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        var project = try #require(store.projects.first)
+        project.accentColorHex = "#FF0000"
+        project.services[0].symbolName = "network"
+        store.replaceProject(project)
+
+        let configs = store.serviceConfigs(for: project)
+        let gateway = try #require(configs.first { $0.name == project.services[0].name })
+        #expect(gateway.accentColorHex == "#FF0000")
+        #expect(gateway.symbolName == "network")
+
+        // Un servizio senza symbolName esplicito riceve nil (default), non una stringa vuota.
+        let other = try #require(configs.first { $0.name != project.services[0].name })
+        #expect(other.symbolName == nil)
+        #expect(other.accentColorHex == "#FF0000")  // stesso progetto, stesso colore accento
+    }
+
+    // MARK: - updateProjectAccentColor
+
+    @Test func updateProjectAccentColorSetsAndPersists() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        try store.updateProjectAccentColor(projectID: "Skillera", hex: "#4F8EF7")
+
+        #expect(store.projects.first?.accentColorHex == "#4F8EF7")
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.accentColorHex == "#4F8EF7")
+    }
+
+    @Test func updateProjectAccentColorRemovesWithNil() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        try store.updateProjectAccentColor(projectID: "Skillera", hex: "#4F8EF7")
+        try store.updateProjectAccentColor(projectID: "Skillera", hex: nil)
+
+        #expect(store.projects.first?.accentColorHex == nil)
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.accentColorHex == nil)
+    }
+
+    @Test func updateProjectAccentColorThrowsWhenProjectMissing() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        #expect(throws: StoreError.self) {
+            try store.updateProjectAccentColor(projectID: "non-esiste", hex: "#4F8EF7")
+        }
+    }
+
     @Test func importWithOverrideNameSucceeds() throws {
         let url = tempStoreURL()
         let store = ServiceStore(fileURL: url)

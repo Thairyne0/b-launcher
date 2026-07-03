@@ -19,6 +19,10 @@ struct StoredService: Codable, Hashable {
     var directory: String          // path assoluto della cartella del servizio
     var command: String
     var readiness: StoredReadiness
+    /// Nome SF Symbol da mostrare al posto dell'icona di default. `nil` = default.
+    /// Additivo (schema resta v1): assente in un file scritto da una versione precedente
+    /// dell'app, decodifica a `nil` grazie al default qui sotto.
+    var symbolName: String? = nil
 }
 
 struct StoredInfraCheck: Codable, Hashable {
@@ -36,6 +40,10 @@ struct StoredProject: Codable, Hashable, Identifiable {
     var services: [StoredService]
     var profiles: [StoredProfile]
     var infraCheck: StoredInfraCheck?
+    /// Colore accento del progetto in UI, es. "#4F8EF7". `nil` = colore di default.
+    /// Additivo (schema resta v1): assente in un file scritto da una versione precedente
+    /// dell'app, decodifica a `nil` grazie al default qui sotto.
+    var accentColorHex: String? = nil
     var id: String { name }
 }
 
@@ -330,6 +338,16 @@ final class ServiceStore {
         save()
     }
 
+    /// Imposta, sostituisce o rimuove (con `nil`) il colore accento di un progetto.
+    /// `projectNotFound` se `projectID` non esiste.
+    func updateProjectAccentColor(projectID: String, hex: String?) throws {
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw StoreError.projectNotFound(projectID)
+        }
+        projects[index].accentColorHex = hex
+        save()
+    }
+
     /// Sostituisce l'intera lista di profili di un progetto. Validazione:
     /// - ogni nome profilo non vuoto (dopo trim) e univoco (case-insensitive) tra i profili
     ///   passati;
@@ -437,7 +455,9 @@ final class ServiceStore {
                 command: service.command,
                 readiness: readiness,
                 absoluteDirectory: URL(fileURLWithPath: service.directory),
-                projectName: project.name
+                projectName: project.name,
+                accentColorHex: project.accentColorHex,
+                symbolName: service.symbolName
             )
         }
     }

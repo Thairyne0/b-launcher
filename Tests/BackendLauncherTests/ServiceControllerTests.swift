@@ -171,6 +171,26 @@ private func fakeConfig(command: String) -> ServiceConfig {
         #expect(stopped)
     }
 
+    @Test func logFileURLPointsToTheActualLogFileOnDisk() async {
+        // config.id "fake" (nessun projectName) -> nome file "fake.log", nella directory di
+        // test dedicata (cwd != nil -> Self.testLogDirectory, stesso comportamento di
+        // LogFileWriterTests ma passando dal controller invece che dal writer direttamente).
+        // L'output del processo passa per `onChunk`, che scrive sia su `logs` che su
+        // `fileWriter`: usiamo l'eco del comando reale, non `c.logs.ingest` diretto (quello
+        // bypasserebbe il file writer).
+        let c = ServiceController(config: fakeConfig(command: #"sh -c "echo riga-di-prova; sleep 60""#), cwd: "/tmp")
+        c.start()
+        _ = await waitUntil { c.processID != nil }
+        // Attendi che la scrittura arrivi su disco (coda seriale asincrona in LogFileWriter).
+        let wroteToDisk = await waitUntil {
+            (try? String(contentsOf: c.logFileURL, encoding: .utf8))?.contains("riga-di-prova") == true
+        }
+        #expect(wroteToDisk)
+        #expect(c.logFileURL.lastPathComponent == "fake.log")
+        c.stop()
+        _ = await waitUntil { c.status == .stopped }
+    }
+
     @Test func restartDoesNotInvokeOnCrash() async {
         var invoked = false
         let c = ServiceController(config: fakeConfig(command: "sleep 60"), cwd: "/tmp",

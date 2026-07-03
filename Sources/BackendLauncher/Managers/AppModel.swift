@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -144,6 +145,7 @@ final class AppModel {
         let liveIDs = Set(services.map(\.id))
         expandedServices = expandedServices.intersection(liveIDs)
         pendingConfigChanges = pendingConfigChanges.intersection(liveIDs)
+        updateDockBadge()
     }
 
     /// Porta l'attenzione su un servizio: espande il suo terminale e filtra sugli errori.
@@ -229,6 +231,45 @@ final class AppModel {
         }
     }
 
+    /// Riavvia ciò che gira in UN progetto specifico: i servizi vivi (`processAlive`)
+    /// vengono riavviati con `restart()`; i servizi non vivi (fermi o crashati) restano
+    /// INVARIATI — "riavvia" non significa "avvia tutto", è un refresh di ciò che è già
+    /// in esecuzione, non un semplice alias di `startProject`.
+    func restartProject(named projectName: String) {
+        for service in services
+        where service.config.projectName == projectName && service.processAlive {
+            service.restart()
+        }
+    }
+
+    /// Stessa semantica di `restartProject`, ma su TUTTI i progetti: riavvia solo i
+    /// servizi vivi, lascia invariati quelli fermi/crashati.
+    func restartAll() {
+        for service in services where service.processAlive {
+            service.restart()
+        }
+    }
+
+    /// Svuota il terminale (log in-memory) di tutti i servizi di UN progetto specifico.
+    /// Non tocca il file di log su disco né lo stato del processo.
+    func clearProjectTerminals(named projectName: String) {
+        for service in services where service.config.projectName == projectName {
+            service.logs.clear()
+        }
+    }
+
+    /// Aggiorna il badge del dock con il numero di servizi in stato `.crashed`.
+    /// Guardia: `Bundle.main.bundleIdentifier` è `nil` da `swift test`/`swift run` (binario
+    /// nudo) — stesso pattern di `CrashNotifier.isAvailable`, per non toccare `NSApp` nei test.
+    private func updateDockBadge() {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let crashedCount = services.filter {
+            if case .crashed = $0.status { return true }
+            return false
+        }.count
+        NSApp.dockTile.badgeLabel = crashedCount > 0 ? "\(crashedCount)" : nil
+    }
+
     /// Stop di tutto con attesa (grace di killpg configurabile + margine). Per il quit.
     /// Il minimo storico di 6.5s resta come pavimento anche se la grace configurata è più bassa.
     func shutdownForQuit() async {
@@ -260,6 +301,7 @@ final class AppModel {
                 }) {
                     self.reloadFromStore()
                 }
+                self.updateDockBadge()
                 let pollSeconds = AppSettings.pollIntervalSeconds
                 try? await Task.sleep(nanoseconds: UInt64(pollSeconds * 1_000_000_000))
             }
