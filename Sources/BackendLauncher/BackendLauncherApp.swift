@@ -103,6 +103,13 @@ struct BackendLauncherApp: App {
                 Button("Ferma tutti…") { model.stopAllRequested = true }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
             }
+
+            // `CommandGroup` non può leggere `@Environment` direttamente (non è una View):
+            // si incapsula l'azione in una piccola View (`HelpCommand`) che la legge e la
+            // usa nel proprio `Button`. Pattern documentato per aprire finestre da .commands.
+            CommandGroup(replacing: .help) {
+                HelpCommand()
+            }
         }
 
         MenuBarExtra {
@@ -114,6 +121,25 @@ struct BackendLauncherApp: App {
         Settings {
             SettingsView()
         }
+
+        Window("Aiuto — Backend Launcher", id: "help") {
+            HelpView()
+        }
+        .defaultSize(width: 780, height: 560)
+    }
+}
+
+/// Voce di menu "Aiuto Backend Launcher" (sostituisce il menu Aiuto di sistema): apre la
+/// finestra di aiuto (`id: "help"`). Isolata in una View perché `CommandGroup` non ha accesso
+/// a `@Environment(\.openWindow)` — solo le View lo hanno.
+private struct HelpCommand: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Aiuto Backend Launcher") {
+            openWindow(id: "help")
+        }
+        .keyboardShortcut("?", modifiers: .command)
     }
 }
 

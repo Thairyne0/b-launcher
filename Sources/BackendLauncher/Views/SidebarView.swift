@@ -73,6 +73,7 @@ enum SidebarSelectionCoding {
 struct SidebarView: View {
     var model: AppModel
     @Binding var selection: SidebarSelection
+    @Environment(\.openWindow) private var openWindow
 
     @State private var addingServiceToProject: String?
     @State private var editingService: (projectID: String, originalName: String)?
@@ -152,6 +153,18 @@ struct SidebarView: View {
                     showImportSheet = true
                 } label: {
                     Label("Importa progetto…", systemImage: "square.and.arrow.down")
+                }
+            }
+
+            Section {
+                SettingsLink {
+                    Label("Impostazioni", systemImage: "gearshape")
+                }
+
+                Button {
+                    openWindow(id: "help")
+                } label: {
+                    Label("Aiuto", systemImage: "questionmark.circle")
                 }
             }
         }
