@@ -1,18 +1,32 @@
 import SwiftUI
 
+/// Pagina attiva della finestra principale, persistita tra i lanci dell'app.
+enum LauncherPage: String, CaseIterable {
+    case dashboard = "Backend"
+    case focus = "Focus"
+}
+
 struct ContentView: View {
     @Bindable var model: AppModel
+    @AppStorage("launcherPage") private var page: LauncherPage = .dashboard
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                GlassEffectContainer(spacing: 14) {
-                    VStack(spacing: 14) {
-                        ForEach(model.services) { controller in
-                            ServiceCardView(controller: controller)
+            Group {
+                switch page {
+                case .dashboard:
+                    ScrollView {
+                        GlassEffectContainer(spacing: 14) {
+                            VStack(spacing: 14) {
+                                ForEach(model.services) { controller in
+                                    ServiceCardView(controller: controller)
+                                }
+                            }
+                            .padding(20)
                         }
                     }
-                    .padding(20)
+                case .focus:
+                    FocusView(model: model)
                 }
             }
             .background {
@@ -25,6 +39,16 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     NATSIndicator(up: model.natsUp)
+                }
+                ToolbarItem(placement: .principal) {
+                    Picker("Pagina", selection: $page) {
+                        ForEach(LauncherPage.allCases, id: \.self) { p in
+                            Text(p.rawValue).tag(p)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 240)
+                    .labelsHidden()
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Menu("Profili", systemImage: "list.bullet.rectangle") {
