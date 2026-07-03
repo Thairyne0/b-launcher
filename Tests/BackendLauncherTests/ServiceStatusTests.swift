@@ -38,6 +38,17 @@ import Testing
                                      stopRequested: false, lastExitCode: nil) == .external)
     }
 
+    @Test func crashedTakesPrecedenceOverStalePortOpen() {
+        // processo appena crashato ma l'ultimo poll della porta era ancora "aperta"
+        #expect(ServiceStatus.derive(processAlive: false, portOpen: true,
+                                     stopRequested: false, lastExitCode: 3) == .crashed(exitCode: 3))
+    }
+
+    @Test func stoppedAfterUserStopTakesPrecedenceOverStalePortOpen() {
+        #expect(ServiceStatus.derive(processAlive: false, portOpen: true,
+                                     stopRequested: true, lastExitCode: 0) == .stopped)
+    }
+
     @Test func sixServicesConfigured() {
         #expect(ServiceConfig.all.count == 6)
         #expect(ServiceConfig.all.map(\.name) == ["gateway", "id", "atlas", "hr", "certet", "bill"])
