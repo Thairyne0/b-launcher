@@ -17,7 +17,8 @@ struct ContentView: View {
                 case .dashboard:
                     ScrollView {
                         GlassEffectContainer(spacing: 14) {
-                            VStack(spacing: 14) {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 470, maximum: .infinity), spacing: 16)],
+                                      spacing: 20) {
                                 ForEach(model.services) { controller in
                                     ServiceCardView(controller: controller)
                                 }

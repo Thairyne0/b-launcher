@@ -65,7 +65,8 @@ struct ServiceCardView: View {
                 .padding(4)
                 .help(showTerminal ? "Nascondi terminale" : "Mostra terminale")
             }
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 18)
 
             if showTerminal {
                 TerminalView(logs: controller.logs)
