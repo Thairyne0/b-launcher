@@ -70,7 +70,10 @@ struct ServiceFormSheet: View {
     }
 
     private var portValue: UInt16? {
-        UInt16(portText.trimmingCharacters(in: .whitespacesAndNewlines))
+        // 0 non è una porta TCP utilizzabile: rifiutata esplicitamente.
+        guard let port = UInt16(portText.trimmingCharacters(in: .whitespacesAndNewlines)),
+              port > 0 else { return nil }
+        return port
     }
 
     private var markerIsValid: Bool {
@@ -153,7 +156,7 @@ struct ServiceFormSheet: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 160)
                     if portValue == nil && !portText.isEmpty {
-                        Text("Porta non valida (0–65535).")
+                        Text("Porta non valida (1–65535).")
                             .font(.caption)
                             .foregroundStyle(.red)
                     }

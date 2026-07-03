@@ -233,6 +233,13 @@ final class AppModel {
                         service.portOpen = results[p] ?? false
                     }
                 }
+                // Modifiche di config in sospeso: quando il servizio interessato si è
+                // fermato, ricarica dallo store per applicarle (e togliere il badge).
+                if self.pendingConfigChanges.contains(where: { id in
+                    self.services.first { $0.id == id }?.processAlive != true
+                }) {
+                    self.reloadFromStore()
+                }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
