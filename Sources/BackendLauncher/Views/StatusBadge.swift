@@ -67,7 +67,7 @@ struct MetricPill<Content: View>: View {
         .font(.caption2)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(.white.opacity(0.07), in: .capsule)
+        .background(.quaternary.opacity(0.5), in: .capsule)
         .foregroundStyle(.secondary)
     }
 }

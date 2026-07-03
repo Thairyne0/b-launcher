@@ -74,7 +74,6 @@ struct ServiceCardView: View {
                     .padding([.horizontal, .bottom], 16)
             }
         }
-        .frame(minHeight: 480, alignment: .top)
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
         .contextMenu {
             Button("Apri directory nel Finder") {

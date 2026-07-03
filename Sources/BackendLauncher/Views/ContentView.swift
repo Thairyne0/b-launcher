@@ -8,6 +8,7 @@ enum LauncherPage: String, CaseIterable {
 
 struct ContentView: View {
     @Bindable var model: AppModel
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("launcherPage") private var page: LauncherPage = .dashboard
     @State private var expandedServices: Set<String> = []
     @State private var contentWidth: CGFloat = 1200
@@ -50,9 +51,10 @@ struct ContentView: View {
                 }
             }
             .background {
-                LinearGradient(colors: [Color(hue: 0.62, saturation: 0.30, brightness: 0.16),
-                                        Color(hue: 0.68, saturation: 0.28, brightness: 0.09)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                LinearGradient(colors: colorScheme == .dark
+                               ? [Color(white: 0.13), Color(white: 0.07)]
+                               : [Color(white: 0.96), Color(white: 0.90)],
+                               startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
             }
             .navigationTitle("Skillera Backend")
