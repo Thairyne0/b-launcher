@@ -26,11 +26,15 @@ enum PortCheck {
         guard errno == EINPROGRESS else { return false }
 
         var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
-        guard poll(&pfd, 1, timeoutMs) == 1 else { return false }
+        var pollResult: Int32
+        repeat {
+            pollResult = poll(&pfd, 1, timeoutMs)
+        } while pollResult == -1 && errno == EINTR
+        guard pollResult == 1 else { return false }
 
         var soError: Int32 = -1
         var len = socklen_t(MemoryLayout<Int32>.size)
-        getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len)
+        guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) == 0 else { return false }
         return soError == 0
     }
 }
