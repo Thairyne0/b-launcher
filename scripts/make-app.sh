@@ -8,6 +8,7 @@ APP="dist/Backend Launcher.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/BackendLauncher "$APP/Contents/MacOS/BackendLauncher"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -22,6 +23,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <string>Backend Launcher</string>
     <key>CFBundleDisplayName</key>
     <string>Backend Launcher</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
