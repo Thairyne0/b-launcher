@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -6,12 +7,14 @@ import UniformTypeIdentifiers
 /// Flusso: 1) scegli il file → mostra nome template + n servizi; 2) scegli la root sul TUO
 /// Mac dove vive il repo; 3) eventualmente rinomina (prefilled, utile in caso di collisione);
 /// 4) Importa.
+///
+/// NOTA: i picker usano NSOpenPanel diretto invece di `.fileImporter` — due `.fileImporter`
+/// sulla stessa view non funzionano (limite SwiftUI documentato: solo l'ultimo si presenta),
+/// e da una sheet modale anche il singolo importer è inaffidabile su macOS.
 struct ImportTemplateSheet: View {
     var model: AppModel
     var onDismiss: () -> Void
 
-    @State private var showFileImporter = true
-    @State private var showRootPicker = false
     @State private var loadedTemplate: ProjectTemplate?
     @State private var rootURL: URL?
     @State private var projectName: String = ""
@@ -40,7 +43,7 @@ struct ImportTemplateSheet: View {
                             .truncationMode(.middle)
                             .textSelection(.enabled)
                         Spacer()
-                        Button("Scegli…") { showRootPicker = true }
+                        Button("Scegli…") { chooseRootFolder() }
                     }
                 }
 
@@ -67,6 +70,10 @@ struct ImportTemplateSheet: View {
                         .disabled(rootURL == nil || projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             } else {
+                Text("Scegli il file .blauncher.json esportato da un collega.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.callout)
@@ -76,41 +83,42 @@ struct ImportTemplateSheet: View {
                 HStack {
                     Spacer()
                     Button("Annulla", role: .cancel) { onDismiss() }
-                    Button("Scegli file…") { showFileImporter = true }
+                        .keyboardShortcut(.cancelAction)
+                    Button("Scegli file…") { chooseTemplateFile() }
+                        .keyboardShortcut(.defaultAction)
                 }
             }
         }
         .padding(24)
         .frame(width: 460)
-        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.json]) { result in
-            handleFilePick(result)
-        }
-        .fileImporter(isPresented: $showRootPicker, allowedContentTypes: [.folder]) { result in
-            handleRootPick(result)
-        }
     }
 
-    private func handleFilePick(_ result: Result<URL, Error>) {
-        switch result {
-        case .failure(let error):
+    private func chooseTemplateFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
+        panel.message = "Scegli il template di progetto (.blauncher.json)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            let template = try ProjectTemplateCodec.decode(data)
+            loadedTemplate = template
+            projectName = template.name
+            errorMessage = nil
+        } catch {
             errorMessage = error.localizedDescription
-        case .success(let url):
-            do {
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                let data = try Data(contentsOf: url)
-                let template = try ProjectTemplateCodec.decode(data)
-                loadedTemplate = template
-                projectName = template.name
-                errorMessage = nil
-            } catch {
-                errorMessage = error.localizedDescription
-            }
         }
     }
 
-    private func handleRootPick(_ result: Result<URL, Error>) {
-        guard case .success(let url) = result else { return }
+    private func chooseRootFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Scegli la cartella dove si trova il progetto su questo Mac"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
         rootURL = url
     }
 

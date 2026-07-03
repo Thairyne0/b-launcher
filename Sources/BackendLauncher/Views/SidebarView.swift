@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -471,7 +472,6 @@ private struct ExportTemplateSheet: View {
     var onDismiss: () -> Void
 
     @State private var rootURL: URL?
-    @State private var showRootPicker = false
     @State private var showFileExporter = false
     @State private var exportDocument: TemplateJSONDocument?
     @State private var errorMessage: String?
@@ -507,7 +507,7 @@ private struct ExportTemplateSheet: View {
                         .truncationMode(.middle)
                         .textSelection(.enabled)
                     Spacer()
-                    Button("Scegli…") { showRootPicker = true }
+                    Button("Scegli…") { chooseExportRoot() }
                 }
             }
 
@@ -531,10 +531,6 @@ private struct ExportTemplateSheet: View {
         .padding(24)
         .frame(width: 460)
         .onAppear(perform: prefillDefaultRoot)
-        .fileImporter(isPresented: $showRootPicker, allowedContentTypes: [.folder]) { result in
-            guard case .success(let url) = result else { return }
-            rootURL = url
-        }
         .fileExporter(isPresented: $showFileExporter,
                       document: exportDocument,
                       contentType: .json,
@@ -551,6 +547,17 @@ private struct ExportTemplateSheet: View {
     /// Default proposto: genitore comune delle directory dei servizi del progetto, calcolato
     /// da `ProjectTemplateCodec.commonRoot`; se non calcolabile (servizi senza antenato comune,
     /// o progetto senza servizi), ricade sulla home dell'utente.
+    /// NSOpenPanel diretto: `.fileImporter` da una sheet modale è inaffidabile su macOS.
+    private func chooseExportRoot() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Scegli la cartella radice rispetto a cui salvare i percorsi"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        rootURL = url
+    }
+
     private func prefillDefaultRoot() {
         guard rootURL == nil else { return }
         let directories = project?.services.map(\.directory) ?? []

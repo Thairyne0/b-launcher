@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -30,7 +31,6 @@ struct ServiceFormSheet: View {
     @State private var readinessKind: ReadinessKind = .logMarker
     @State private var portText: String = ""
     @State private var marker: String = "successfully started"
-    @State private var showFolderPicker = false
     @State private var saveError: String?
     /// Evita di mostrare "il nome non può essere vuoto" prima ancora che l'utente abbia
     /// interagito col form (fastidioso in modalità "add" a sheet appena aperta).
@@ -112,7 +112,7 @@ struct ServiceFormSheet: View {
                         .truncationMode(.middle)
                         .textSelection(.enabled)
                     Spacer()
-                    Button("Scegli…") { showFolderPicker = true }
+                    Button("Scegli…") { chooseFolder() }
                 }
                 if folderIsMissing {
                     Label("La cartella non esiste (ancora) su disco — puoi salvare comunque.",
@@ -194,14 +194,17 @@ struct ServiceFormSheet: View {
         }
         .padding(24)
         .frame(width: 460)
-        .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
-            handleFolderPick(result)
-        }
         .onAppear(perform: prefillIfEditing)
     }
 
-    private func handleFolderPick(_ result: Result<URL, Error>) {
-        guard case .success(let url) = result else { return }
+    /// NSOpenPanel diretto: `.fileImporter` da una sheet modale è inaffidabile su macOS.
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Scegli la cartella del backend"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
         folderURL = url
         if trimmedName.isEmpty {
             name = url.lastPathComponent
