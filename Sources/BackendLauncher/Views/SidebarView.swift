@@ -93,6 +93,10 @@ struct SidebarView: View {
     /// Progetti collassati (per id) — set vuoto di default: TUTTI i progetti partono espansi
     /// senza dover pre-popolare nulla da `projects` (evita di dover reagire a progetti nuovi).
     @State private var collapsedProjects: Set<String> = []
+    /// `true` mentre la label del bottone "Genera con Claude Code…" mostra la conferma
+    /// transiente "Prompt copiato ✓" invece del testo/icona normali (Feature 2). Un `Task`
+    /// dedicato la fa rientrare dopo ~2.5s — vedi `copyClaudeCodePrompt()`.
+    @State private var showPromptCopiedConfirmation = false
 
     /// `List(selection:)` richiede un binding opzionale; un deselect (nil) ricade su `.grid`
     /// così la vista di dettaglio ha sempre una selezione valida.
@@ -154,21 +158,22 @@ struct SidebarView: View {
                 } label: {
                     Label("Importa progetto…", systemImage: "square.and.arrow.down")
                 }
-            }
-
-            Section {
-                SettingsLink {
-                    Label("Impostazioni", systemImage: "gearshape")
-                }
 
                 Button {
-                    openWindow(id: "help")
+                    copyClaudeCodePrompt()
                 } label: {
-                    Label("Aiuto", systemImage: "questionmark.circle")
+                    if showPromptCopiedConfirmation {
+                        Label("Prompt copiato ✓", systemImage: "checkmark")
+                    } else {
+                        Label("Genera con Claude Code…", systemImage: "sparkles")
+                    }
                 }
             }
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
+            sidebarFooter
+        }
         .sheet(item: Binding(
             get: { addingServiceToProject.map(SheetProjectID.init) },
             set: { addingServiceToProject = $0?.id }
@@ -264,6 +269,61 @@ struct SidebarView: View {
             if let newProjectError {
                 Text(newProjectError)
             }
+        }
+    }
+
+    /// Footer fisso della sidebar (Impostazioni + Aiuto): agganciato alla `List` tramite
+    /// `.safeAreaInset(edge: .bottom)` invece di vivere DENTRO la lista, così resta ancorato
+    /// in fondo alla sidebar indipendentemente dallo scroll del contenuto sopra — a differenza
+    /// di una `Section` finale, che scrolla via insieme al resto quando i progetti sono tanti.
+    /// `.thinMaterial` per staccarlo visivamente dal contenuto che gli scorre dietro (coerente
+    /// con la vetrosità di altri pannelli fissi dell'app) invece di uno sfondo `.clear`, che si
+    /// fonderebbe con l'ultima riga della lista e renderebbe meno leggibile il confine.
+    private var sidebarFooter: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Divider()
+
+            SettingsLink {
+                sidebarFooterLabel(title: "Impostazioni", systemImage: "gearshape")
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                openWindow(id: "help")
+            } label: {
+                sidebarFooterLabel(title: "Aiuto", systemImage: "questionmark.circle")
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.bottom, 6)
+        .background(.thinMaterial)
+    }
+
+    /// Contenuto di una riga del footer: full-width e allineata a sinistra come le righe
+    /// standard della sidebar, con padding verticale/orizzontale coerente con quelle generate
+    /// da `List`/`Label` in stile `.sidebar`.
+    private func sidebarFooterLabel(title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+    }
+
+    /// Copia negli appunti il prompt pronto per Claude Code (Feature 2), poi mostra la
+    /// conferma transiente "Prompt copiato ✓" al posto della label normale per ~2.5s.
+    /// `Task` + `sleep` invece di un alert: più leggero e non blocca l'interazione con il
+    /// resto della sidebar durante la conferma.
+    private func copyClaudeCodePrompt() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(ClaudeCodePrompt.make(), forType: .string)
+
+        showPromptCopiedConfirmation = true
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            showPromptCopiedConfirmation = false
         }
     }
 
