@@ -18,6 +18,7 @@ struct TerminalView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(.quaternary.opacity(0.5), in: .capsule)
+                .frame(maxWidth: 240)
 
                 Picker("", selection: $logs.levelFilter) {
                     ForEach(LogStore.LevelFilter.allCases, id: \.self) { filter in
@@ -29,9 +30,12 @@ struct TerminalView: View {
                 .frame(maxWidth: 180)
                 .labelsHidden()
 
+                Spacer()
+
                 Toggle("Autoscroll", isOn: $autoscroll)
                     .toggleStyle(.checkbox)
                     .font(.caption)
+                    .controlSize(.small)
 
                 Button {
                     copyToPasteboard(logs.visibleLines.map(\.text).joined(separator: "\n"))
@@ -39,11 +43,17 @@ struct TerminalView: View {
                     Image(systemName: "doc.on.doc")
                 }
                 .buttonStyle(.borderless)
-                .help("Copia tutto il visibile")
+                .controlSize(.small)
+                .help("Copia log visibile")
 
-                Button("Pulisci") { logs.clear() }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
+                Button {
+                    logs.clear()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Pulisci")
             }
 
             ScrollViewReader { proxy in
@@ -51,7 +61,8 @@ struct TerminalView: View {
                     LazyVStack(alignment: .leading, spacing: 1) {
                         ForEach(logs.visibleLines) { line in
                             Text(highlighted(line.text.isEmpty ? " " : line.text, matching: logs.searchText))
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(.system(size: 12, design: .monospaced))
+                                .lineSpacing(1.5)
                                 .foregroundStyle(color(for: line.level))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .id(line.id)
@@ -70,10 +81,11 @@ struct TerminalView: View {
                                 }
                         }
                     }
-                    .padding(8)
+                    .padding(10)
                     .textSelection(.enabled)
                 }
-                .background(Color.black.opacity(0.78), in: .rect(cornerRadius: 10))
+                .background(Color(red: 0.05, green: 0.07, blue: 0.10).opacity(0.92), in: .rect(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.08)))
                 .onChange(of: logs.lines.last?.id) { _, newID in
                     guard autoscroll, logs.searchText.isEmpty, let newID else { return }
                     proxy.scrollTo(newID, anchor: .bottom)

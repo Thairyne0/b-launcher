@@ -39,8 +39,9 @@ struct StatusDot: View {
     var body: some View {
         Circle()
             .fill(status.color.gradient)
-            .frame(width: 11, height: 11)
-            .shadow(color: status.color.opacity(0.6), radius: pulse ? 6 : 2)
+            .frame(width: 12, height: 12)
+            .shadow(color: status.color.opacity(status == .running || status.isPulsing ? 0.55 : 0),
+                    radius: pulse ? 6 : 3)
             .scaleEffect(pulse ? 1.15 : 1.0)
             .animation(status.isPulsing
                        ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true)
@@ -48,6 +49,26 @@ struct StatusDot: View {
                        value: pulse)
             .onAppear { pulse = status.isPulsing }
             .onChange(of: status.isPulsing) { _, pulsing in pulse = pulsing }
+    }
+}
+
+/// Pillola compatta per metriche (uptime, CPU/RAM) condivisa tra dashboard e Focus.
+struct MetricPill<Content: View>: View {
+    let icon: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        Label {
+            content()
+        } icon: {
+            Image(systemName: icon)
+                .imageScale(.small)
+        }
+        .font(.caption2)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(.white.opacity(0.07), in: .capsule)
+        .foregroundStyle(.secondary)
     }
 }
 

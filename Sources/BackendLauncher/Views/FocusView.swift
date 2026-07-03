@@ -48,6 +48,7 @@ struct FocusView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
+            .fontWeight(isSelected ? .medium : nil)
         }
         .buttonStyle(.plain)
         .glassEffect(isSelected ? .regular.tint(.accentColor.opacity(0.4)) : .regular, in: .capsule)
@@ -102,7 +103,7 @@ private struct FocusPane: View {
             TerminalView(logs: controller.logs)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(14)
+        .padding(16)
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
 
@@ -112,26 +113,27 @@ private struct FocusPane: View {
             StatusDot(status: status)
 
             Text(controller.config.displayName)
-                .font(.headline)
+                .font(.title3.weight(.semibold))
 
             Text(status.label)
                 .font(.caption)
                 .foregroundStyle(status.color)
 
+            Spacer()
+
             if let startedAt = controller.startedAt {
-                Text(startedAt, style: .timer)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                MetricPill(icon: "clock") {
+                    Text(startedAt, style: .timer)
+                        .monospacedDigit()
+                }
             }
 
             if let stats = controller.stats, controller.processAlive {
-                Text("CPU \(stats.cpuPercent, specifier: "%.0f")% · \(stats.rssMB, specifier: "%.0f") MB")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                MetricPill(icon: "gauge.with.dots.needle.33percent") {
+                    Text("\(stats.cpuPercent, specifier: "%.0f")% · \(stats.rssMB, specifier: "%.0f") MB")
+                        .monospacedDigit()
+                }
             }
-
-            Spacer()
 
             controlButtons
         }

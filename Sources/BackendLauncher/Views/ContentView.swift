@@ -23,15 +23,17 @@ struct ContentView: View {
                                 }
                             }
                             .padding(20)
+                            .frame(maxWidth: 1150)
                         }
+                        .frame(maxWidth: .infinity)
                     }
                 case .focus:
                     FocusView(model: model)
                 }
             }
             .background {
-                LinearGradient(colors: [Color(hue: 0.61, saturation: 0.35, brightness: 0.28),
-                                        Color(hue: 0.68, saturation: 0.30, brightness: 0.16)],
+                LinearGradient(colors: [Color(hue: 0.62, saturation: 0.30, brightness: 0.16),
+                                        Color(hue: 0.68, saturation: 0.28, brightness: 0.09)],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
                 .ignoresSafeArea()
             }

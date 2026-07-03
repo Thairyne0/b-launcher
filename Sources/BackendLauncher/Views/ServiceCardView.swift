@@ -14,16 +14,17 @@ struct ServiceCardView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(controller.config.displayName)
-                            .font(.headline)
+                            .font(.title3.weight(.semibold))
 
                         if controller.logs.errorCount > 0 {
                             Text("\(controller.logs.errorCount)")
                                 .font(.caption2.bold())
-                                .padding(.horizontal, 6)
+                                .padding(.horizontal, 7)
                                 .padding(.vertical, 1)
                                 .background(Color.red.opacity(0.85), in: .capsule)
                                 .foregroundStyle(.white)
                                 .help("Errori nei log di questa esecuzione")
+                                .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                         }
                     }
                     HStack(spacing: 4) {
@@ -31,11 +32,6 @@ struct ServiceCardView: View {
                         Text("·")
                         Text(controller.status.label)
                             .foregroundStyle(controller.status.color)
-                        if let stats = controller.stats, controller.processAlive {
-                            Text("·")
-                            Text("CPU \(stats.cpuPercent, specifier: "%.0f")% · \(stats.rssMB, specifier: "%.0f") MB")
-                                .monospacedDigit()
-                        }
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -44,9 +40,17 @@ struct ServiceCardView: View {
                 Spacer()
 
                 if let startedAt = controller.startedAt {
-                    Text(startedAt, style: .timer)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    MetricPill(icon: "clock") {
+                        Text(startedAt, style: .timer)
+                            .monospacedDigit()
+                    }
+                }
+
+                if let stats = controller.stats, controller.processAlive {
+                    MetricPill(icon: "gauge.with.dots.needle.33percent") {
+                        Text("\(stats.cpuPercent, specifier: "%.0f")% · \(stats.rssMB, specifier: "%.0f") MB")
+                            .monospacedDigit()
+                    }
                 }
 
                 controlButtons
@@ -58,14 +62,15 @@ struct ServiceCardView: View {
                         .rotationEffect(.degrees(showTerminal ? 180 : 0))
                 }
                 .buttonStyle(.borderless)
+                .padding(4)
                 .help(showTerminal ? "Nascondi terminale" : "Mostra terminale")
             }
-            .padding(14)
+            .padding(16)
 
             if showTerminal {
                 TerminalView(logs: controller.logs)
                     .frame(height: 300)
-                    .padding([.horizontal, .bottom], 14)
+                    .padding([.horizontal, .bottom], 16)
             }
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
@@ -97,6 +102,8 @@ struct ServiceCardView: View {
                 Image(systemName: "play.fill")
             }
             .disabled(controller.processAlive || status == .external)
+            .foregroundStyle(controller.processAlive || status == .external ? Color.secondary : Color.green)
+            .padding(4)
             .help("Avvia")
 
             Button {
@@ -105,6 +112,8 @@ struct ServiceCardView: View {
                 Image(systemName: "stop.fill")
             }
             .disabled(!controller.processAlive || status == .stopping)
+            .foregroundStyle(!controller.processAlive || status == .stopping ? Color.secondary : Color.red)
+            .padding(4)
             .help("Ferma")
 
             Button {
@@ -113,6 +122,7 @@ struct ServiceCardView: View {
                 Image(systemName: "arrow.clockwise")
             }
             .disabled(status == .external || status == .stopping)
+            .padding(4)
             .help("Riavvia")
         }
         .buttonStyle(.borderless)
