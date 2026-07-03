@@ -98,6 +98,8 @@ struct BackendLauncherApp: App {
 
                 Button("Avvia tutti") { model.startAll() }
                     .keyboardShortcut("a", modifiers: [.command, .shift])
+                Button("Riavvia tutti") { model.restartAll() }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
                 Button("Ferma tutti…") { model.stopAllRequested = true }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
             }
@@ -127,6 +129,8 @@ struct MenuBarContent: View {
         Divider()
         Button("Avvia tutti") { model.startAll() }
             .disabled(model.services.allSatisfy { $0.processAlive })
+        Button("Riavvia tutti") { model.restartAll() }
+            .disabled(!model.anyRunning)
         Button("Ferma tutti") { model.stopAll() }
             .disabled(!model.anyRunning)
             .help("Ferma subito, senza conferma")

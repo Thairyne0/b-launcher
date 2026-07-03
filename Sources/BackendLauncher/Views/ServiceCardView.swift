@@ -21,6 +21,12 @@ struct ServiceCardView: View {
         !FileManager.default.fileExists(atPath: controller.config.workingDirectory.path)
     }
 
+    /// Colore accento del progetto proprietario, se impostato e valido — usato solo per il
+    /// bordo sottile sopra il glass (feature "colore progetto").
+    private var accentColor: Color? {
+        controller.config.accentColorHex.flatMap(Color.init(hex:))
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -28,6 +34,10 @@ struct ServiceCardView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
+                        Image(systemName: controller.config.symbolName ?? "server.rack")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+
                         Text(controller.config.displayName)
                             .font(.title3.weight(.semibold))
 
@@ -53,6 +63,9 @@ struct ServiceCardView: View {
                         Text("·")
                         Text(controller.status.label)
                             .foregroundStyle(controller.status.color)
+                        if controller.status == .starting, let startedAt = controller.startedAt {
+                            startupTimer(since: startedAt)
+                        }
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -103,6 +116,10 @@ struct ServiceCardView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 18)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                withAnimation(.snappy) { showTerminal.toggle() }
+            }
 
             if showTerminal {
                 TerminalView(logs: controller.logs)
@@ -111,6 +128,12 @@ struct ServiceCardView: View {
             }
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .overlay {
+            if let accentColor {
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(accentColor.opacity(0.5), lineWidth: 1.5)
+            }
+        }
         .contextMenu {
             Button("Apri directory nel Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([controller.config.workingDirectory])
@@ -125,6 +148,43 @@ struct ServiceCardView: View {
             Button("Copia percorso") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(controller.config.workingDirectory.path, forType: .string)
+            }
+            Button("Apri log nel Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([controller.logFileURL])
+            }
+            Button("Apri Terminale qui") {
+                openTerminal(at: controller.config.workingDirectory)
+            }
+        }
+    }
+
+    /// Apre Terminal.app sulla working directory del servizio. Preferisce la lookup via
+    /// bundle identifier (`urlForApplication(withBundleIdentifier:)`, robusta a spostamenti
+    /// di Terminal.app), con fallback ai path noti se per qualche motivo il bundle non
+    /// risulta registrato a Launch Services.
+    private func openTerminal(at directory: URL) {
+        let terminalURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal")
+            ?? ["/System/Applications/Utilities/Terminal.app", "/Applications/Utilities/Terminal.app"]
+                .map(URL.init(fileURLWithPath:))
+                .first { FileManager.default.fileExists(atPath: $0.path) }
+        guard let terminalURL else { return }
+        NSWorkspace.shared.open([directory], withApplicationAt: terminalURL, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// Timer di avvio mostrato mentre lo stato è `.starting`: "avvio da" + un `Text(.timer)`
+    /// che si auto-aggiorna senza bisogno di un `Task`/poller dedicato. L'eventuale hint
+    /// "lento? guarda i log" (oltre i 90s) è invece calcolato dentro un `TimelineView`
+    /// periodico: `Text(.timer)` si ridisegna da solo ma non ci dà un hook per leggere il
+    /// tempo trascorso, quindi il controllo soglia ha bisogno di un proprio trigger periodico.
+    @ViewBuilder
+    private func startupTimer(since startedAt: Date) -> some View {
+        Text("· avvio da \(startedAt, style: .timer)")
+            .monospacedDigit()
+
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            if context.date.timeIntervalSince(startedAt) > 90 {
+                Text("· lento? guarda i log")
+                    .foregroundStyle(.orange)
             }
         }
     }

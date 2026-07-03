@@ -1,5 +1,25 @@
+import SwiftUI
 import Testing
 @testable import BackendLauncher
+
+@Suite struct ColorHexTests {
+    @Test func parsesValidHexWithHash() {
+        #expect(Color(hex: "#4F8EF7") != nil)
+    }
+
+    @Test func parsesValidHexWithoutHash() {
+        #expect(Color(hex: "4F8EF7") != nil)
+    }
+
+    @Test func rejectsInvalidLength() {
+        #expect(Color(hex: "#FFF") == nil)
+        #expect(Color(hex: "#4F8EF70") == nil)
+    }
+
+    @Test func rejectsNonHexCharacters() {
+        #expect(Color(hex: "#GGGGGG") == nil)
+    }
+}
 
 @Suite struct FocusSelectionTests {
     @Test func parseEmptyString() {

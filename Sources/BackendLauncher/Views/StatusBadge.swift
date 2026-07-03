@@ -1,5 +1,22 @@
 import SwiftUI
 
+extension Color {
+    /// Parser di un colore da stringa esadecimale "#RRGGBB" (con o senza "#"), usato per
+    /// `StoredProject.accentColorHex`. Pura: nessuna dipendenza da NSColor/UIColor dinamici,
+    /// nessun supporto ad alpha o forme abbreviate ("#RGB") — non ci servono, i preset del
+    /// color picker sono tutti "#RRGGBB" a 6 cifre. Input non conforme (lunghezza sbagliata,
+    /// caratteri non esadecimali) → `nil`, mai un colore "a caso".
+    init?(hex: String) {
+        var chars = hex
+        if chars.hasPrefix("#") { chars.removeFirst() }
+        guard chars.count == 6, let value = UInt32(chars, radix: 16) else { return nil }
+        let r = Double((value >> 16) & 0xFF) / 255
+        let g = Double((value >> 8) & 0xFF) / 255
+        let b = Double(value & 0xFF) / 255
+        self = Color(red: r, green: g, blue: b)
+    }
+}
+
 extension ServiceStatus {
     var label: String {
         switch self {

@@ -125,6 +125,10 @@ struct ServicePaneView: View {
         return HStack(spacing: 10) {
             StatusDot(status: status)
 
+            Image(systemName: controller.config.symbolName ?? "server.rack")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
             Text(controller.config.displayName)
                 .font(.title3.weight(.semibold))
 

@@ -12,6 +12,38 @@ private enum ReadinessKind: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Preset di icone SF Symbol selezionabili per un servizio. `nil` (rappresentato dal primo
+/// elemento) è il default "server.rack" già usato ovunque nella UI quando `symbolName` è assente.
+private enum ServiceIconPreset: CaseIterable, Identifiable {
+    case defaultServer
+    case globe
+    case database
+    case bolt
+    case shippingBox
+    case terminal
+    case antenna
+    case gears
+
+    var id: String { symbolName ?? "default" }
+
+    var symbolName: String? {
+        switch self {
+        case .defaultServer: nil
+        case .globe: "globe"
+        case .database: "cylinder.split.1x2"
+        case .bolt: "bolt.fill"
+        case .shippingBox: "shippingbox.fill"
+        case .terminal: "terminal.fill"
+        case .antenna: "antenna.radiowaves.left.and.right"
+        case .gears: "gearshape.2.fill"
+        }
+    }
+
+    /// Nome sempre concreto per il rendering (default incluso), a differenza di `symbolName`
+    /// che è `nil` per il default per farlo combaciare con `StoredService.symbolName`.
+    var displaySymbolName: String { symbolName ?? "server.rack" }
+}
+
 /// Sheet di aggiunta/modifica di un servizio all'interno di un progetto. Usato sia in
 /// modalità "add" (nessun servizio esistente) sia "edit" (prefilled, rename supportato).
 struct ServiceFormSheet: View {
@@ -31,6 +63,7 @@ struct ServiceFormSheet: View {
     @State private var readinessKind: ReadinessKind = .logMarker
     @State private var portText: String = ""
     @State private var marker: String = "successfully started"
+    @State private var symbolName: String?
     @State private var saveError: String?
     /// Evita di mostrare "il nome non può essere vuoto" prima ancora che l'utente abbia
     /// interagito col form (fastidioso in modalità "add" a sheet appena aperta).
@@ -175,6 +208,8 @@ struct ServiceFormSheet: View {
                 }
             }
 
+            iconSection
+
             if let saveError {
                 Text(saveError)
                     .font(.callout)
@@ -195,6 +230,33 @@ struct ServiceFormSheet: View {
         .padding(24)
         .frame(width: 460)
         .onAppear(perform: prefillIfEditing)
+    }
+
+    private var iconSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Icona").font(.headline)
+            HStack(spacing: 10) {
+                ForEach(ServiceIconPreset.allCases) { preset in
+                    iconOption(preset)
+                }
+            }
+        }
+    }
+
+    private func iconOption(_ preset: ServiceIconPreset) -> some View {
+        let isSelected = symbolName == preset.symbolName
+        return Button {
+            symbolName = preset.symbolName
+        } label: {
+            Image(systemName: preset.displaySymbolName)
+                .imageScale(.medium)
+                .frame(width: 28, height: 28)
+                .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                .background(isSelected ? Color.accentColor : Color.gray.opacity(0.18),
+                            in: .rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .help(preset.displaySymbolName)
     }
 
     /// NSOpenPanel diretto: `.fileImporter` da una sheet modale è inaffidabile su macOS.
@@ -228,6 +290,7 @@ struct ServiceFormSheet: View {
         case .processAlive:
             readinessKind = .processAlive
         }
+        symbolName = service.symbolName
     }
 
     private func save() {
@@ -244,7 +307,7 @@ struct ServiceFormSheet: View {
         }
         let service = StoredService(name: trimmedName, directory: folderURL.path,
                                     command: command.trimmingCharacters(in: .whitespacesAndNewlines),
-                                    readiness: readiness)
+                                    readiness: readiness, symbolName: symbolName)
         do {
             switch mode {
             case .add:

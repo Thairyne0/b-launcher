@@ -14,6 +14,7 @@ struct ProjectSettingsSheet: View {
     @State private var infraLabel: String = "NATS"
     @State private var infraPortText: String = ""
     @State private var profiles: [EditableProfile] = []
+    @State private var accentColorHex: String?
     @State private var saveError: String?
 
     private var project: StoredProject? {
@@ -60,6 +61,7 @@ struct ProjectSettingsSheet: View {
                 .font(.title2.weight(.semibold))
 
             nameSection
+            colorSection
             infraSection
             profilesSection
 
@@ -103,6 +105,34 @@ struct ProjectSettingsSheet: View {
                     .foregroundStyle(.orange)
             }
         }
+    }
+
+    private var colorSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Colore").font(.headline)
+            HStack(spacing: 10) {
+                ForEach(ProjectAccentColor.presets) { preset in
+                    colorDot(preset)
+                }
+            }
+        }
+    }
+
+    private func colorDot(_ preset: ProjectAccentColor) -> some View {
+        Button {
+            accentColorHex = preset.hex
+        } label: {
+            Circle()
+                .fill(preset.color)
+                .frame(width: 22, height: 22)
+                .overlay {
+                    Circle()
+                        .strokeBorder(Color.primary, lineWidth: accentColorHex == preset.hex ? 2 : 0)
+                        .padding(-3)
+                }
+        }
+        .buttonStyle(.plain)
+        .help(preset.name)
     }
 
     private var infraSection: some View {
@@ -204,13 +234,14 @@ struct ProjectSettingsSheet: View {
             infraPortText = ""
         }
         profiles = project.profiles.map { EditableProfile(name: $0.name, serviceNames: $0.serviceNames) }
+        accentColorHex = project.accentColorHex
     }
 
     // MARK: - Salvataggio
 
-    /// Applica, in ordine, rename (se cambiato) -> infra check -> profili. Si ferma al primo
-    /// errore (mostrato inline) senza proseguire agli step successivi. Su successo completo,
-    /// ricarica l'AppModel e chiude lo sheet.
+    /// Applica, in ordine, rename (se cambiato) -> colore -> infra check -> profili. Si ferma
+    /// al primo errore (mostrato inline) senza proseguire agli step successivi. Su successo
+    /// completo, ricarica l'AppModel e chiude lo sheet.
     private func save() {
         guard let store = model.store else { return }
         var currentID = projectID
@@ -222,6 +253,14 @@ struct ProjectSettingsSheet: View {
                 saveError = error.localizedDescription
                 return
             }
+        }
+
+        do {
+            try store.updateProjectAccentColor(projectID: currentID, hex: accentColorHex)
+        } catch {
+            saveError = error.localizedDescription
+            model.reloadFromStore()
+            return
         }
 
         do {
@@ -270,6 +309,27 @@ private struct EditableProfile: Identifiable {
     let id = UUID()
     var name: String
     var serviceNames: [String]
+}
+
+/// Preset selezionabile nel color picker del progetto. `hex == nil` è il preset "grigio /
+/// default" — nessun colore salvato, la card torna al glass neutro senza bordo accento.
+private struct ProjectAccentColor: Identifiable {
+    let name: String
+    let hex: String?
+
+    var id: String { hex ?? "default" }
+    var color: Color { hex.flatMap(Color.init(hex:)) ?? Color.gray }
+
+    static let presets: [ProjectAccentColor] = [
+        ProjectAccentColor(name: "Blu", hex: "#4F8EF7"),
+        ProjectAccentColor(name: "Verde", hex: "#34C759"),
+        ProjectAccentColor(name: "Arancio", hex: "#FF9500"),
+        ProjectAccentColor(name: "Rosso", hex: "#FF3B30"),
+        ProjectAccentColor(name: "Viola", hex: "#AF52DE"),
+        ProjectAccentColor(name: "Rosa", hex: "#FF2D55"),
+        ProjectAccentColor(name: "Teal", hex: "#30B0C7"),
+        ProjectAccentColor(name: "Grigio (default)", hex: nil),
+    ]
 }
 
 /// Riga di chip "toggle" per la selezione multi di nomi servizio, disposti su più righe

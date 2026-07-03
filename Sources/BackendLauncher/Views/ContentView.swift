@@ -12,6 +12,10 @@ struct ContentView: View {
     /// in `SidebarView` ma di competenza di questa vista perché il banner vive nel dettaglio.
     @State private var rebasingProjectID: String?
     @State private var rebaseError: String?
+    /// Progetto per cui è stata richiesta l'aggiunta del primo backend dallo stato vuoto
+    /// (`emptyProjectView`) — pilota una sheet di competenza di questa vista, indipendente da
+    /// quella (analoga) ospitata da `SidebarView` per il resto dei flussi add/edit.
+    @State private var addingServiceToProjectID: String?
 
     private var gridColumns: [GridItem] {
         contentWidth < 860
@@ -57,6 +61,14 @@ struct ContentView: View {
         ), allowedContentTypes: [.folder]) { result in
             handleRebasePick(result)
         }
+        .sheet(item: Binding(
+            get: { addingServiceToProjectID.map(EmptyProjectSheetTarget.init) },
+            set: { addingServiceToProjectID = $0?.id }
+        )) { target in
+            ServiceFormSheet(model: model, projectID: target.id, mode: .add) {
+                addingServiceToProjectID = nil
+            }
+        }
         .alert("Impossibile cambiare cartella", isPresented: Binding(
             get: { rebaseError != nil },
             set: { if !$0 { rebaseError = nil } }
@@ -84,14 +96,18 @@ struct ContentView: View {
                 if let controller = model.services.first(where: { $0.id == id }) {
                     ServicePaneView(controller: controller)
                         .padding(20)
-                        .transition(.opacity)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 } else {
                     ContentUnavailableView("Servizio non trovato", systemImage: "questionmark.square.dashed")
                 }
             case .project(let id):
                 let projectServices = model.services.filter { $0.config.projectName == id }
                 if projectServices.isEmpty {
-                    ContentUnavailableView("Progetto non trovato", systemImage: "questionmark.folder")
+                    if model.store?.projects.contains(where: { $0.id == id }) == true {
+                        emptyProjectView(projectID: id)
+                    } else {
+                        ContentUnavailableView("Progetto non trovato", systemImage: "questionmark.folder")
+                    }
                 } else {
                     VStack(spacing: 14) {
                         if allWorkingDirectoriesMissing(projectServices) {
@@ -107,7 +123,7 @@ struct ContentView: View {
         .background {
             LinearGradient(colors: colorScheme == .dark
                            ? [Color(white: 0.13), Color(white: 0.07)]
-                           : [Color(white: 0.96), Color(white: 0.90)],
+                           : [Color(white: 0.94), Color(white: 0.86)],
                            startPoint: .top, endPoint: .bottom)
             .ignoresSafeArea()
         }
@@ -128,8 +144,22 @@ struct ContentView: View {
                 profilesMenu
                 Button("Avvia tutti", systemImage: "play.fill") { model.startAll() }
                     .disabled(model.services.allSatisfy { $0.processAlive })
+                Button("Riavvia", systemImage: "arrow.clockwise") {
+                    if case .project(let id) = currentSelection {
+                        model.restartProject(named: id)
+                    } else {
+                        model.restartAll()
+                    }
+                }
+                .disabled(!model.anyRunning)
                 Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
                     .disabled(!model.anyRunning)
+                if case .project(let id) = currentSelection {
+                    Button("Pulisci terminali", systemImage: "clear") {
+                        model.clearProjectTerminals(named: id)
+                    }
+                    .help("Pulisci tutti i terminali del progetto")
+                }
             }
         }
     }
@@ -210,6 +240,22 @@ struct ContentView: View {
         }
     }
 
+    /// Stato vuoto per un progetto esistente ma senza backend configurati (distinto da
+    /// "progetto non trovato": qui l'id esiste in `model.store.projects`, semplicemente
+    /// `services` è vuoto). Offre direttamente l'azione per aggiungere il primo backend
+    /// invece di rimandare l'utente alla sidebar.
+    private func emptyProjectView(projectID: String) -> some View {
+        ContentUnavailableView {
+            Label("Nessun backend", systemImage: "shippingbox")
+        } description: {
+            Text("Aggiungi il primo backend di questo progetto.")
+        } actions: {
+            Button("Aggiungi backend…") {
+                addingServiceToProjectID = projectID
+            }
+        }
+    }
+
     /// Banner "cartelle mancanti", mostrato solo nel dettaglio filtrato su UN progetto
     /// (`.project(id)`): in `.grid` la vista mescola servizi di progetti diversi, quindi un
     /// singolo banner "cambia cartella" non avrebbe un progetto univoco a cui applicarsi —
@@ -256,4 +302,11 @@ struct ContentView: View {
             }
         }
     }
+}
+
+/// Wrapper `Identifiable` per pilotare `.sheet(item:)` con un `String?` opzionale (project id) —
+/// analogo a `SheetProjectID` in `SidebarView.swift`, duplicato qui perché quello è `private`
+/// al file e questa sheet è di competenza esclusiva di `ContentView` (stato vuoto progetto).
+private struct EmptyProjectSheetTarget: Identifiable {
+    let id: String
 }

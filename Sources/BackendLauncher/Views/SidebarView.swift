@@ -305,8 +305,20 @@ struct SidebarView: View {
             .help("Aggiungi un nuovo backend a \"\(project.name)\"")
         } label: {
             HStack {
+                if let accentColorHex = project.accentColorHex, let color = Color(hex: accentColorHex) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 8, height: 8)
+                }
                 Label(project.name, systemImage: "folder")
                 Spacer()
+                let services = controllers(forProject: project)
+                if !services.isEmpty {
+                    Text("\(services.filter(\.processAlive).count)/\(services.count)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
             .contentShape(Rectangle())
             .listRowBackground(
@@ -336,6 +348,15 @@ struct SidebarView: View {
             model.stopProject(named: project.id)
         }
         .disabled(!isRunning)
+
+        Button("Riavvia progetto") {
+            model.restartProject(named: project.id)
+        }
+        .disabled(!isRunning)
+
+        Button("Pulisci terminali") {
+            model.clearProjectTerminals(named: project.id)
+        }
 
         Divider()
 
@@ -367,6 +388,9 @@ struct SidebarView: View {
         HStack(spacing: 8) {
             StatusDot(status: controller.status)
                 .scaleEffect(0.75)
+            Image(systemName: controller.config.symbolName ?? "server.rack")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Text(controller.config.displayName)
             if model.pendingConfigChanges.contains(controller.id) {
                 Image(systemName: "arrow.triangle.2.circlepath")
