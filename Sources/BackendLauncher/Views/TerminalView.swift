@@ -6,6 +6,14 @@ struct TerminalView: View {
     @Bindable var logs: LogStore
     @State private var autoscroll = true
     @State private var currentMatchIndex = 0
+    // AppSettings vive su UserDefaults (non @Observable): senza questo bridge la body
+    // non si ri-valuterebbe ai cambi di dimensione testo (es. da ⌘+/⌘- o da SettingsView).
+    // La chiave DEVE combaciare esattamente con `AppSettings.Keys.terminalFontSize`.
+    @AppStorage("terminalFontSize") private var terminalFontSize: Double = 12
+
+    private var clampedFontSize: Double {
+        min(max(terminalFontSize, 9), 20)
+    }
 
     private var currentMatchOrdinal: Int {
         let matches = logs.searchMatchIDs
@@ -134,6 +142,7 @@ struct TerminalView: View {
                     searchText: logs.searchText,
                     currentMatchID: currentMatchID,
                     autoscroll: autoscroll,
+                    fontSize: clampedFontSize,
                     onErrorBlockCopy: { id in LogStore.errorBlock(startingAt: id, in: logs.lines) }
                 )
             }

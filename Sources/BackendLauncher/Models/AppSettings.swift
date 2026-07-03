@@ -13,6 +13,7 @@ enum AppSettings {
         static let killGracePeriodSeconds = "killGracePeriodSeconds"
         static let maxLogLines = "maxLogLines"
         static let crashNotificationsEnabled = "crashNotificationsEnabled"
+        static let terminalFontSize = "terminalFontSize"
     }
 
     /// Intervallo (secondi) tra due cicli di poll di stato/porte in AppModel. Default 2.
@@ -49,6 +50,15 @@ enum AppSettings {
         set { defaults.set(newValue, forKey: Keys.crashNotificationsEnabled) }
     }
 
+    /// Dimensione (punti) del font monospace nel terminale log. Default 12.
+    static var terminalFontSize: Double {
+        get {
+            let stored = defaults.object(forKey: Keys.terminalFontSize) as? Double ?? 12
+            return clampTerminalFontSize(stored)
+        }
+        set { defaults.set(clampTerminalFontSize(newValue), forKey: Keys.terminalFontSize) }
+    }
+
     private static func clampPollInterval(_ value: Double) -> Double {
         min(max(value, 1), 30)
     }
@@ -59,5 +69,9 @@ enum AppSettings {
 
     private static func clampMaxLogLines(_ value: Int) -> Int {
         min(max(value, 500), 50000)
+    }
+
+    private static func clampTerminalFontSize(_ value: Double) -> Double {
+        min(max(value, 9), 20)
     }
 }

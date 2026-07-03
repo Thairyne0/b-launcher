@@ -7,6 +7,7 @@ struct LogTextView: NSViewRepresentable {
     var searchText: String
     var currentMatchID: Int?
     var autoscroll: Bool
+    var fontSize: Double
     var onErrorBlockCopy: (Int) -> String   // id riga errore → testo blocco (per il menu contestuale)
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -51,6 +52,7 @@ struct LogTextView: NSViewRepresentable {
             searchText: searchText,
             currentMatchID: currentMatchID,
             autoscroll: autoscroll,
+            fontSize: fontSize,
             onErrorBlockCopy: onErrorBlockCopy
         )
     }
@@ -70,24 +72,27 @@ struct LogTextView: NSViewRepresentable {
         private var lastSearchText: String = ""
         private var lastMatchID: Int?
         private var lastAutoscrollFlag = true
+        private var lastFontSize: Double = 12
         /// Mappa id riga → range di caratteri nel textStorage, per il context menu.
         private(set) var lineRanges: [(id: Int, level: LogLevel, range: NSRange)] = []
         private var wasNearBottom = true
         var onErrorBlockCopy: (Int) -> String = { _ in "" }
 
-        private static let paragraphStyle: NSParagraphStyle = {
-            let style = NSMutableParagraphStyle()
-            style.lineSpacing = 1.5 * 12 * 0.5 // ~1.5 line spacing at 12pt monospace
-            return style
-        }()
+        private var paragraphStyle = LogTextView.Coordinator.makeParagraphStyle(fontSize: 12)
+        private var font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
 
-        private static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        private static func makeParagraphStyle(fontSize: Double) -> NSParagraphStyle {
+            let style = NSMutableParagraphStyle()
+            style.lineSpacing = fontSize * 0.75 // proporzionale: ~9pt a 12pt monospace
+            return style
+        }
 
         func apply(
             lines: [LogLine],
             searchText: String,
             currentMatchID: Int?,
             autoscroll: Bool,
+            fontSize: Double,
             onErrorBlockCopy: @escaping (Int) -> String
         ) {
             self.onErrorBlockCopy = onErrorBlockCopy
@@ -96,12 +101,18 @@ struct LogTextView: NSViewRepresentable {
             let searchChanged = searchText != lastSearchText
             let autoscrollJustEnabled = autoscroll && !lastAutoscrollFlag
             let matchChanged = currentMatchID != lastMatchID
+            let fontSizeChanged = fontSize != lastFontSize
+
+            if fontSizeChanged {
+                font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+                paragraphStyle = Self.makeParagraphStyle(fontSize: fontSize)
+            }
 
             // Appendibile solo se: ricerca invariata, il buffer precedente non è vuoto,
             // il nuovo array è strettamente più lungo, e l'ultimo id del vecchio buffer
             // compare esattamente in coda (nessun trim/reset di mezzo, ids monotonici).
             let isPureAppend: Bool = {
-                guard !searchChanged, !lastLines.isEmpty, lines.count > lastLines.count else { return false }
+                guard !searchChanged, !fontSizeChanged, !lastLines.isEmpty, lines.count > lastLines.count else { return false }
                 guard lines.first?.id == lastLines.first?.id else { return false }
                 return lines[lastLines.count - 1].id == lastLines[lastLines.count - 1].id
             }()
@@ -116,7 +127,7 @@ struct LogTextView: NSViewRepresentable {
                 if matchChanged {
                     rebuild(lines: lines, searchText: searchText, currentMatchID: currentMatchID, textView: textView)
                 }
-            } else if searchChanged || !linesEqual(lines, lastLines) || matchChanged {
+            } else if fontSizeChanged || searchChanged || !linesEqual(lines, lastLines) || matchChanged {
                 rebuild(lines: lines, searchText: searchText, currentMatchID: currentMatchID, textView: textView)
             }
 
@@ -124,6 +135,7 @@ struct LogTextView: NSViewRepresentable {
             lastSearchText = searchText
             lastMatchID = currentMatchID
             lastAutoscrollFlag = autoscroll
+            lastFontSize = fontSize
 
             if let currentMatchID, currentMatchID != lastMatchIDScrolledTo {
                 scrollToLine(id: currentMatchID, in: textView)
@@ -155,8 +167,8 @@ struct LogTextView: NSViewRepresentable {
             let text = (line.text.isEmpty ? " " : line.text) + "\n"
             let attr = NSMutableAttributedString(string: text)
             let full = NSRange(location: 0, length: attr.length)
-            attr.addAttribute(.font, value: Self.font, range: full)
-            attr.addAttribute(.paragraphStyle, value: Self.paragraphStyle, range: full)
+            attr.addAttribute(.font, value: font, range: full)
+            attr.addAttribute(.paragraphStyle, value: paragraphStyle, range: full)
             attr.addAttribute(.foregroundColor, value: color(for: line.level), range: full)
 
             if !searchText.isEmpty {

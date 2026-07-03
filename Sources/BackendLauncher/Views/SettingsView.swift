@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var killGracePeriodSeconds: Double = AppSettings.killGracePeriodSeconds
     @State private var maxLogLines: Double = Double(AppSettings.maxLogLines)
     @State private var crashNotificationsEnabled: Bool = AppSettings.crashNotificationsEnabled
+    @State private var terminalFontSize: Double = AppSettings.terminalFontSize
 
     var body: some View {
         Form {
@@ -34,6 +35,15 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Stepper(value: $terminalFontSize, in: 9...20, step: 1) {
+                        Text("Dimensione testo terminale")
+                    }
+                    Text("\(Int(terminalFontSize)) pt")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section {
@@ -53,6 +63,9 @@ struct SettingsView: View {
         }
         .onChange(of: crashNotificationsEnabled) { _, newValue in
             AppSettings.crashNotificationsEnabled = newValue
+        }
+        .onChange(of: terminalFontSize) { _, newValue in
+            AppSettings.terminalFontSize = newValue
         }
     }
 }

@@ -104,6 +104,20 @@ struct BackendLauncherApp: App {
                     .keyboardShortcut("s", modifiers: [.command, .shift])
             }
 
+            CommandMenu("Vista") {
+                // ⌘+ arriva come tasto "=" (senza shift) sui layout US: si mappa "=" così
+                // la scorciatoia scatta senza dover premere anche Shift.
+                Button("Aumenta testo terminale") {
+                    AppSettings.terminalFontSize += 1
+                }
+                .keyboardShortcut("=", modifiers: .command)
+
+                Button("Riduci testo terminale") {
+                    AppSettings.terminalFontSize -= 1
+                }
+                .keyboardShortcut("-", modifiers: .command)
+            }
+
             // `CommandGroup` non può leggere `@Environment` direttamente (non è una View):
             // si incapsula l'azione in una piccola View (`HelpCommand`) che la legge e la
             // usa nel proprio `Button`. Pattern documentato per aprire finestre da .commands.

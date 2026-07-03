@@ -111,4 +111,31 @@ import Testing
             #expect(AppSettings.crashNotificationsEnabled == true)
         }
     }
+
+    @Test func terminalFontSizeDefaultsWhenUnset() {
+        withScratchDefaults {
+            #expect(AppSettings.terminalFontSize == 12)
+        }
+    }
+
+    @Test func terminalFontSizeRoundTrips() {
+        withScratchDefaults {
+            AppSettings.terminalFontSize = 16
+            #expect(AppSettings.terminalFontSize == 16)
+        }
+    }
+
+    @Test func terminalFontSizeClampsBelowMinimumOnWrite() {
+        withScratchDefaults {
+            AppSettings.terminalFontSize = 0
+            #expect(AppSettings.terminalFontSize == 9)
+        }
+    }
+
+    @Test func terminalFontSizeClampsAboveMaximumOnWrite() {
+        withScratchDefaults {
+            AppSettings.terminalFontSize = 999
+            #expect(AppSettings.terminalFontSize == 20)
+        }
+    }
 }
