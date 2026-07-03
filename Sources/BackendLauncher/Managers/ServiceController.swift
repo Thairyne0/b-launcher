@@ -15,7 +15,7 @@ final class ServiceController: Identifiable {
 
     /// Statistiche CPU/RAM del process group corrente (nil finché non c'è una seconda lettura).
     private(set) var stats: ProcessStats.Sample?
-    private var statsTask: Task<Void, Never>?
+    private nonisolated(unsafe) var statsTask: Task<Void, Never>?
     private var lastCPUSeconds: Double?
 
     // servizi solo-NATS: pronto quando il log Nest annuncia l'avvio
@@ -41,6 +41,10 @@ final class ServiceController: Identifiable {
         self.config = config
         self.cwdOverride = cwd
         self.onCrash = onCrash
+    }
+
+    deinit {
+        statsTask?.cancel()
     }
 
     nonisolated var id: String { config.id }

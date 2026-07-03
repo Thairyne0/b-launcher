@@ -22,7 +22,9 @@ import Testing
             onChunk: { rec.chunk($0) },
             onExit: { rec.exited($0) }
         )
-        let done = await waitUntil { rec.queue.sync { rec.exitCode != nil } }
+        let done = await waitUntil {
+            rec.queue.sync { rec.exitCode != nil && rec.output.contains("hello-launcher") }
+        }
         #expect(done)
         rec.queue.sync {
             #expect(rec.output.contains("hello-launcher"))

@@ -73,10 +73,10 @@ struct ServiceCardView: View {
             Button("Apri directory nel Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([controller.config.workingDirectory])
             }
-            if FileManager.default.fileExists(atPath: "/Applications/Visual Studio Code.app") {
+            if let vscode = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.VSCode") {
                 Button("Apri in VS Code") {
                     NSWorkspace.shared.open([controller.config.workingDirectory],
-                                            withApplicationAt: URL(fileURLWithPath: "/Applications/Visual Studio Code.app"),
+                                            withApplicationAt: vscode,
                                             configuration: NSWorkspace.OpenConfiguration())
                 }
             }
