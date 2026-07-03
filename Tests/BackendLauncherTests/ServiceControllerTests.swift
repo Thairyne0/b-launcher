@@ -58,4 +58,26 @@ private func fakeConfig(command: String) -> ServiceConfig {
         c.stop()
         _ = await waitUntil { c.processID == nil }
     }
+
+    @Test func restartAfterCrashStartsFresh() async {
+        let c = ServiceController(config: fakeConfig(command: "exit 7"), cwd: "/tmp")
+        c.start()
+        let crashed = await waitUntil { c.status == .crashed(exitCode: 7) }
+        #expect(crashed)
+        c.restart()
+        // restart() da .crashed NON è un no-op: start() è sincrono, quindi qui il
+        // nuovo processo è già partito (nessun await tra restart e questo expect).
+        #expect(c.status == .starting)
+        // il nuovo "exit 7" esce di nuovo → di nuovo .crashed
+        let crashedAgain = await waitUntil { c.status == .crashed(exitCode: 7) }
+        #expect(crashedAgain)
+        // esattamente due banner di avvio nei log: il secondo start è avvenuto davvero
+        #expect(c.logs.lines.filter { $0.text.contains("── avvio") }.count == 2)
+    }
+
+    @Test func spawnFailureBecomesCrashedMinusOne() async {
+        let c = ServiceController(config: fakeConfig(command: "true"), cwd: "/nonexistent/xyz")
+        c.start()
+        #expect(c.status == .crashed(exitCode: -1))
+    }
 }

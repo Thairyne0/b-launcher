@@ -9,11 +9,13 @@ import Testing
         #expect(PortCheck.isOpen(listener.port) == true)
     }
 
-    @Test func detectsClosedPort() {
-        // apri e chiudi subito: la porta risulta libera
+    @Test func detectsClosedPort() async {
+        // apri e chiudi subito: la porta deve risultare libera
+        // (retry: il teardown del socket nel kernel è asincrono sotto carico)
         let listener = makeTCPListener()
         let port = listener.port
         close(listener.fd)
-        #expect(PortCheck.isOpen(port) == false)
+        let closed = await waitUntil(timeout: 2) { PortCheck.isOpen(port) == false }
+        #expect(closed)
     }
 }

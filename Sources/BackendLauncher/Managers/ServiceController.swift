@@ -17,6 +17,10 @@ final class ServiceController: Identifiable {
     private var stopRequested = false
     private var lastExitCode: Int32?
     private var pendingRestart = false
+    /// Generazione dello spawn corrente. EOF della pipe ed exit del processo sono eventi
+    /// kernel indipendenti: dopo un restart un chunk bufferizzato (o un exit in ritardo)
+    /// del VECCHIO processo può arrivare quando il NUOVO è già partito — va scartato.
+    private var epoch = 0
     private let cwdOverride: String?
 
     /// `cwd` iniettabile solo per i test; in produzione usa config.workingDirectory.
@@ -43,13 +47,21 @@ final class ServiceController: Identifiable {
         stopRequested = false
         lastExitCode = nil
         logs.ingest("[launcher] ── avvio \(config.displayName) (\(config.command)) ──\n")
+        epoch += 1
+        let myEpoch = epoch
         do {
             let cwd = cwdOverride ?? config.workingDirectory.path
             process = try SpawnedProcess(
                 shellCommand: "exec \(config.command)",
                 cwd: cwd,
-                onChunk: { [weak self] chunk in self?.logs.ingest(chunk) },
-                onExit: { [weak self] code in self?.handleExit(code) }
+                onChunk: { [weak self] chunk in
+                    guard let self, self.epoch == myEpoch else { return }
+                    self.logs.ingest(chunk)
+                },
+                onExit: { [weak self] code in
+                    guard let self, self.epoch == myEpoch else { return }
+                    self.handleExit(code)
+                }
             )
             processAlive = true
             startedAt = Date()
