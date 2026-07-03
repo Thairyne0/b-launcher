@@ -116,10 +116,29 @@ import Testing
     }
 
     @Test func roundTripPreservesSelection() {
-        let selections: [SidebarSelection] = [.grid, .focus, .service("id"), .service("gateway")]
+        let selections: [SidebarSelection] = [.grid, .focus, .service("id"), .service("gateway"), .project("Skillera")]
         for selection in selections {
             let encoded = SidebarSelectionCoding.encode(selection)
             #expect(SidebarSelectionCoding.decode(encoded) == selection)
         }
+    }
+
+    // MARK: - project case
+
+    @Test func encodeProject() {
+        #expect(SidebarSelectionCoding.encode(.project("Skillera")) == "project:Skillera")
+    }
+
+    @Test func decodeProject() {
+        #expect(SidebarSelectionCoding.decode("project:Skillera") == .project("Skillera"))
+    }
+
+    @Test func decodeEmptyProjectIDFallsBackToGrid() {
+        #expect(SidebarSelectionCoding.decode("project:") == .grid)
+    }
+
+    @Test func roundTripPreservesProjectSelection() {
+        let selection = SidebarSelection.project("MyProject")
+        #expect(SidebarSelectionCoding.decode(SidebarSelectionCoding.encode(selection)) == selection)
     }
 }

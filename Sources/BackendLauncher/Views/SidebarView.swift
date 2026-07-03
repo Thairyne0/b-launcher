@@ -25,22 +25,27 @@ struct TemplateJSONDocument: FileDocument {
     }
 }
 
-/// Selezione corrente nella sidebar: griglia completa, vista Focus, o singolo servizio.
+/// Selezione corrente nella sidebar: griglia completa, vista Focus, singolo servizio, o
+/// griglia filtrata su un singolo progetto (righe progetto cliccabili, Phase F).
 enum SidebarSelection: Hashable {
     case grid
     case focus
     case service(String)
+    case project(String)
 }
 
-/// Serializzazione pura `SidebarSelection` <-> stringa per @AppStorage ("grid" / "focus" / "service:<id>").
+/// Serializzazione pura `SidebarSelection` <-> stringa per @AppStorage
+/// ("grid" / "focus" / "service:<id>" / "project:<id>").
 enum SidebarSelectionCoding {
     private static let servicePrefix = "service:"
+    private static let projectPrefix = "project:"
 
     static func encode(_ selection: SidebarSelection) -> String {
         switch selection {
         case .grid: return "grid"
         case .focus: return "focus"
         case .service(let id): return servicePrefix + id
+        case .project(let id): return projectPrefix + id
         }
     }
 
@@ -52,6 +57,11 @@ enum SidebarSelectionCoding {
             let id = String(raw.dropFirst(servicePrefix.count))
             guard !id.isEmpty else { return .grid }
             return .service(id)
+        }
+        if raw.hasPrefix(projectPrefix) {
+            let id = String(raw.dropFirst(projectPrefix.count))
+            guard !id.isEmpty else { return .grid }
+            return .project(id)
         }
         return .grid
     }
@@ -72,6 +82,9 @@ struct SidebarView: View {
     @State private var newProjectError: String?
     @State private var exportingProject: String?
     @State private var showImportSheet = false
+    /// Progetti collassati (per id) — set vuoto di default: TUTTI i progetti partono espansi
+    /// senza dover pre-popolare nulla da `projects` (evita di dover reagire a progetti nuovi).
+    @State private var collapsedProjects: Set<String> = []
 
     /// `List(selection:)` richiede un binding opzionale; un deselect (nil) ricade su `.grid`
     /// così la vista di dettaglio ha sempre una selezione valida.
@@ -79,6 +92,18 @@ struct SidebarView: View {
         Binding(
             get: { selection },
             set: { selection = $0 ?? .grid }
+        )
+    }
+
+    /// Binding di espansione per un dato progetto: derivato da `collapsedProjects` (assente
+    /// = espanso). Invertito rispetto allo storage per far sì che il default (set vuoto)
+    /// corrisponda a "tutti espansi".
+    private func expansionBinding(forProjectID id: String) -> Binding<Bool> {
+        Binding(
+            get: { !collapsedProjects.contains(id) },
+            set: { isExpanded in
+                if isExpanded { collapsedProjects.remove(id) } else { collapsedProjects.insert(id) }
+            }
         )
     }
 
@@ -93,29 +118,17 @@ struct SidebarView: View {
                         .tag(SidebarSelection.focus)
                 }
 
-                ForEach(projects) { project in
-                    Section {
-                        ForEach(controllers(forProject: project)) { controller in
-                            serviceRow(for: controller, projectID: project.id)
-                                .tag(SidebarSelection.service(controller.id))
-                        }
-
-                        Button {
-                            addingServiceToProject = project.id
-                        } label: {
-                            Label("Aggiungi backend", systemImage: "plus")
-                        }
-                        .help("Aggiungi un nuovo backend a \"\(project.name)\"")
-                    } header: {
-                        Text(project.name)
-                    }
-                    .contextMenu {
-                        Button("Esporta progetto…") {
-                            exportingProject = project.id
-                        }
-                        Button("Elimina progetto", role: .destructive) {
-                            deletingProject = project.id
-                        }
+                Section {
+                    ForEach(projects) { project in
+                        projectDisclosureRow(project)
+                            .contextMenu {
+                                Button("Esporta progetto…") {
+                                    exportingProject = project.id
+                                }
+                                Button("Elimina progetto", role: .destructive) {
+                                    deletingProject = project.id
+                                }
+                            }
                     }
                 }
             } else {
@@ -235,6 +248,52 @@ struct SidebarView: View {
 
     private func controllers(forProject project: StoredProject) -> [ServiceController] {
         model.services.filter { $0.config.projectName == project.name }
+    }
+
+    /// Riga progetto: `DisclosureGroup` per il chevron espandi/comprimi + i rigi servizio,
+    /// ma la SELEZIONE della label non usa `.tag()` sulla label (o sul gruppo) — vedi nota
+    /// sotto sul perché. La label è una `HStack` con `.contentShape(Rectangle())` +
+    /// `.onTapGesture` che scrive direttamente il binding `selection`, indipendente dal
+    /// meccanismo di tap del chevron (che resta di competenza esclusiva di `DisclosureGroup`
+    /// tramite `isExpanded`).
+    ///
+    /// PERCHÉ non `.tag()`: sia taggare la label sia taggare l'intero `DisclosureGroup`
+    /// compilano entrambi puliti con `swift build` (verificato), ma essendo impossibilitati a
+    /// lanciare l'app per verifica manuale, e con regressioni note e documentate su macOS
+    /// 14->15 di conflazione tra selezione-riga e hit-testing del chevron in
+    /// `List(selection:)` + `DisclosureGroup`/`OutlineGroup` (rigo espandi/seleziona che si
+    /// "rubano" il tap a seconda del punto esatto del click), si preferisce il pattern più
+    /// robusto: gesture di selezione esplicita e disaccoppiata dal chevron. Vedi report per
+    /// la variante alternativa (tag-based) considerata.
+    private func projectDisclosureRow(_ project: StoredProject) -> some View {
+        DisclosureGroup(isExpanded: expansionBinding(forProjectID: project.id)) {
+            ForEach(controllers(forProject: project)) { controller in
+                serviceRow(for: controller, projectID: project.id)
+                    .tag(SidebarSelection.service(controller.id))
+            }
+
+            Button {
+                addingServiceToProject = project.id
+            } label: {
+                Label("Aggiungi backend", systemImage: "plus")
+            }
+            .buttonStyle(.plain)
+            .help("Aggiungi un nuovo backend a \"\(project.name)\"")
+        } label: {
+            HStack {
+                Label(project.name, systemImage: "folder")
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .listRowBackground(
+                selection == .project(project.id)
+                    ? Color.accentColor.opacity(0.18)
+                    : Color.clear
+            )
+            .onTapGesture {
+                selection = .project(project.id)
+            }
+        }
     }
 
     /// `projectID` è l'id reale del progetto (da `StoredProject.id`, passato esplicitamente

@@ -55,7 +55,7 @@ struct ContentView: View {
         Group {
             switch currentSelection {
             case .grid:
-                gridView
+                gridView(services: model.services)
                     .transition(.opacity)
             case .focus:
                 FocusView(model: model)
@@ -68,6 +68,14 @@ struct ContentView: View {
                 } else {
                     ContentUnavailableView("Servizio non trovato", systemImage: "questionmark.square.dashed")
                 }
+            case .project(let id):
+                let projectServices = model.services.filter { $0.config.projectName == id }
+                if projectServices.isEmpty {
+                    ContentUnavailableView("Progetto non trovato", systemImage: "questionmark.folder")
+                } else {
+                    gridView(services: projectServices)
+                        .transition(.opacity)
+                }
             }
         }
         .animation(.easeOut(duration: 0.2), value: currentSelection)
@@ -78,13 +86,13 @@ struct ContentView: View {
                            startPoint: .top, endPoint: .bottom)
             .ignoresSafeArea()
         }
-        .navigationTitle("Skillera Backend")
+        .navigationTitle(navigationTitle(for: currentSelection))
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 NATSIndicator(up: model.natsUp)
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                if currentSelection == .grid {
+                if isGridLike(currentSelection) {
                     Button(model.allExpanded ? "Comprimi tutti" : "Espandi tutti",
                            systemImage: model.allExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical") {
                         withAnimation(.snappy) {
@@ -98,6 +106,24 @@ struct ContentView: View {
                 Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
                     .disabled(!model.anyRunning)
             }
+        }
+    }
+
+    /// Titolo di navigazione per selezione: nome progetto per `.project`, invariato altrove.
+    private func navigationTitle(for selection: SidebarSelection) -> String {
+        switch selection {
+        case .project(let id):
+            return model.store?.projects.first(where: { $0.id == id })?.name ?? id
+        default:
+            return "Skillera Backend"
+        }
+    }
+
+    /// "Espandi/comprimi tutti" ha senso su qualunque vista a griglia, sia `.grid` che `.project`.
+    private func isGridLike(_ selection: SidebarSelection) -> Bool {
+        switch selection {
+        case .grid, .project: return true
+        default: return false
         }
     }
 
@@ -126,11 +152,11 @@ struct ContentView: View {
         }
     }
 
-    private var gridView: some View {
+    private func gridView(services: [ServiceController]) -> some View {
         ScrollView {
             GlassEffectContainer(spacing: 14) {
                 LazyVGrid(columns: gridColumns, spacing: 20) {
-                    ForEach(model.services) { controller in
+                    ForEach(services) { controller in
                         ServiceCardView(controller: controller, showTerminal: Binding(
                             get: { model.expandedServices.contains(controller.id) },
                             set: { isOn in
