@@ -66,6 +66,7 @@ final class ServiceStore {
     init(fileURL: URL? = nil) {
         let url = fileURL ?? Self.defaultFileURL
         self.fileURL = url
+        var preservationFailed = false
 
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
@@ -89,7 +90,10 @@ final class ServiceStore {
                     do {
                         try FileManager.default.moveItem(at: url, to: futureVersionURL)
                     } catch {
+                        // Preservazione fallita: NON scrivere su disco in questa sessione,
+                        // altrimenti sovrascriveremmo proprio i dati che volevamo salvare.
                         print("[ServiceStore] impossibile preservare il file di versione futura: \(error)")
+                        preservationFailed = true
                     }
                 } else {
                     self.projects = decoded.projects
@@ -102,13 +106,22 @@ final class ServiceStore {
                 do {
                     try FileManager.default.moveItem(at: url, to: corruptURL)
                 } catch {
+                    // Stessa logica del file di versione futura: niente save() se il
+                    // backup non è riuscito, per non distruggere l'originale.
                     print("[ServiceStore] impossibile mettere da parte il file corrotto: \(error)")
+                    preservationFailed = true
                 }
             }
         }
 
         self.projects = [Self.migrateFromLegacy()]
-        save()
+        if preservationFailed {
+            // Store solo in memoria per questa sessione: il file originale resta
+            // intatto sul disco per un retry o un intervento manuale.
+            print("[ServiceStore] save() saltato: backup del file precedente non riuscito")
+        } else {
+            save()
+        }
     }
 
     /// Costruisce il progetto "Skillera" dalla configurazione legacy hardcoded.
