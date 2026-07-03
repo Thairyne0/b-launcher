@@ -33,13 +33,17 @@ struct ContentView: View {
         } detail: {
             detailContent
         }
+        .overlay(alignment: .bottom) { ToastOverlay() }
         .alert("NATS non raggiungibile", isPresented: $model.showNATSWarning) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("La porta 4222 è chiusa: i backend partono ma non comunicano tra loro. Controlla i container Docker (skillera-nats).")
         }
         .confirmationDialog("Fermare tutti i backend?", isPresented: $model.stopAllRequested) {
-            Button("Ferma tutti", role: .destructive) { model.stopAll() }
+            Button("Ferma tutti", role: .destructive) {
+                model.stopAll()
+                ToastCenter.shared.show("Arresto di tutti i servizi", systemImage: "stop.circle.fill")
+            }
             Button("Annulla", role: .cancel) {}
         } message: {
             Text("Tutti i processi verranno terminati.")
@@ -142,7 +146,11 @@ struct ContentView: View {
                     }
                 }
                 profilesMenu
-                Button("Avvia tutti", systemImage: "play.fill") { model.startAll() }
+                Button("Avvia tutti", systemImage: "play.fill") {
+                    let startingCount = model.services.filter { !$0.processAlive }.count
+                    model.startAll()
+                    ToastCenter.shared.show("Avvio di \(startingCount) servizi…", systemImage: "play.circle.fill")
+                }
                     .disabled(model.services.allSatisfy { $0.processAlive })
                 Button("Riavvia", systemImage: "arrow.clockwise") {
                     if case .project(let id) = currentSelection {
@@ -150,6 +158,7 @@ struct ContentView: View {
                     } else {
                         model.restartAll()
                     }
+                    ToastCenter.shared.show("Riavvio in corso", systemImage: "arrow.clockwise")
                 }
                 .disabled(!model.anyRunning)
                 Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
@@ -157,6 +166,7 @@ struct ContentView: View {
                 if case .project(let id) = currentSelection {
                     Button("Pulisci terminali", systemImage: "clear") {
                         model.clearProjectTerminals(named: id)
+                        ToastCenter.shared.show("Terminali puliti", systemImage: "clear")
                     }
                     .help("Pulisci tutti i terminali del progetto")
                 }
@@ -297,6 +307,7 @@ struct ContentView: View {
             do {
                 try store.rebaseProject(id: projectID, ontoRoot: url)
                 model.reloadFromStore()
+                ToastCenter.shared.show("Percorsi aggiornati", systemImage: "checkmark.circle.fill")
             } catch {
                 rebaseError = error.localizedDescription
             }

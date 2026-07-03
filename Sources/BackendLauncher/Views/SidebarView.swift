@@ -387,10 +387,13 @@ struct SidebarView: View {
                 Spacer()
                 let services = controllers(forProject: project)
                 if !services.isEmpty {
-                    Text("\(services.filter(\.processAlive).count)/\(services.count)")
+                    let aliveCount = services.filter(\.processAlive).count
+                    Text("\(aliveCount)/\(services.count)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: aliveCount)
                 }
             }
             .contentShape(Rectangle())
@@ -414,21 +417,25 @@ struct SidebarView: View {
 
         Button("Avvia progetto") {
             model.startProject(named: project.id)
+            ToastCenter.shared.show("Avvio progetto \(project.name)", systemImage: "play.circle.fill")
         }
         .disabled(controllers(forProject: project).allSatisfy { $0.processAlive })
 
         Button("Ferma progetto") {
             model.stopProject(named: project.id)
+            ToastCenter.shared.show("Arresto progetto \(project.name)", systemImage: "stop.circle.fill")
         }
         .disabled(!isRunning)
 
         Button("Riavvia progetto") {
             model.restartProject(named: project.id)
+            ToastCenter.shared.show("Riavvio progetto \(project.name)", systemImage: "arrow.clockwise")
         }
         .disabled(!isRunning)
 
         Button("Pulisci terminali") {
             model.clearProjectTerminals(named: project.id)
+            ToastCenter.shared.show("Terminali di \(project.name) puliti", systemImage: "clear")
         }
 
         Divider()
@@ -478,6 +485,8 @@ struct SidebarView: View {
                     .padding(.vertical, 1)
                     .background(Color.red.opacity(0.85), in: .capsule)
                     .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: controller.logs.errorCount)
             }
         }
         .contextMenu {
@@ -527,6 +536,7 @@ struct SidebarView: View {
             do {
                 try store.rebaseProject(id: projectID, ontoRoot: url)
                 model.reloadFromStore()
+                ToastCenter.shared.show("Percorsi aggiornati", systemImage: "checkmark.circle.fill")
             } catch {
                 rebaseError = error.localizedDescription
             }
@@ -634,6 +644,7 @@ private struct ExportTemplateSheet: View {
                       defaultFilename: suggestedFileName) { result in
             switch result {
             case .success:
+                ToastCenter.shared.show("Template esportato", systemImage: "square.and.arrow.up")
                 onDismiss()
             case .failure(let error):
                 errorMessage = error.localizedDescription

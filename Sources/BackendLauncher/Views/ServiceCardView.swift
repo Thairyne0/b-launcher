@@ -53,6 +53,8 @@ struct ServiceCardView: View {
                                     .background(Color.red.opacity(0.85), in: .capsule)
                                     .foregroundStyle(.white)
                                     .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                                    .contentTransition(.numericText())
+                                    .animation(.snappy, value: controller.logs.errorCount)
                             }
                             .buttonStyle(.plain)
                             .help("Mostra gli errori nel terminale")
@@ -99,6 +101,8 @@ struct ServiceCardView: View {
                     MetricPill(icon: "gauge.with.dots.needle.33percent") {
                         Text("\(stats.cpuPercent, specifier: "%.0f")% · \(stats.rssMB, specifier: "%.0f") MB")
                             .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .animation(.snappy, value: stats.cpuPercent)
                     }
                 }
 

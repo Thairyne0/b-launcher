@@ -60,6 +60,7 @@ struct StatusDot: View {
             .shadow(color: status.color.opacity(status == .running || status.isPulsing ? 0.55 : 0),
                     radius: pulse ? 6 : 3)
             .scaleEffect(pulse ? 1.15 : 1.0)
+            .animation(.easeInOut(duration: 0.3), value: status)
             .animation(status.isPulsing
                        ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true)
                        : .default,
