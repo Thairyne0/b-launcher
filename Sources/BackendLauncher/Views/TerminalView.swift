@@ -8,7 +8,10 @@ struct TerminalView: View {
     @State private var currentMatchIndex = 0
 
     private var currentMatchOrdinal: Int {
-        guard !logs.searchMatchIDs.isEmpty else { return 0 }
+        let matches = logs.searchMatchIDs
+        guard !matches.isEmpty else { return 0 }
+        // l'indice può essere stantio dopo un cambio di filtro/trim del buffer
+        guard matches.indices.contains(currentMatchIndex) else { return 1 }
         return currentMatchIndex + 1
     }
 
@@ -100,6 +103,9 @@ struct TerminalView: View {
             }
         }
         .onChange(of: logs.searchText) { _, _ in
+            currentMatchIndex = 0
+        }
+        .onChange(of: logs.levelFilter) { _, _ in
             currentMatchIndex = 0
         }
     }

@@ -72,10 +72,17 @@ struct BackendLauncherApp: App {
                 Divider()
 
                 ForEach(Array(model.services.enumerated()), id: \.element.id) { index, service in
-                    Button("Terminale \(service.config.displayName)") {
-                        model.toggleTerminal(service.id)
+                    // scorciatoia solo per i primi 9: Character("10") crasherebbe
+                    if index < 9 {
+                        Button("Terminale \(service.config.displayName)") {
+                            model.toggleTerminal(service.id)
+                        }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                    } else {
+                        Button("Terminale \(service.config.displayName)") {
+                            model.toggleTerminal(service.id)
+                        }
                     }
-                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
                 }
 
                 Divider()
