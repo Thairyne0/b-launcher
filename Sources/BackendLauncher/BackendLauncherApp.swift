@@ -11,7 +11,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CrashNotifier.requestAuthorizationIfNeeded()
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    // Con la menu bar extra sempre presente, chiudere la finestra non deve terminare
+    // l'app: i backend restano attivi e lo stato resta visibile dalla menu bar.
+    // Cmd-Q continua a passare da applicationShouldTerminate con la conferma esistente.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model, model.anyRunning else { return .terminateNow }
@@ -37,11 +40,62 @@ struct BackendLauncherApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
 
+    private var menuBarIcon: String {
+        if model.services.contains(where: {
+            if case .crashed = $0.status { return true }
+            return false
+        }) {
+            return "exclamationmark.circle.fill"
+        }
+        if model.services.allSatisfy(\.processAlive) { return "circle.fill" }
+        if model.services.contains(where: \.processAlive) { return "circle.lefthalf.filled" }
+        return "circle"
+    }
+
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             ContentView(model: model)
                 .onAppear { delegate.model = model }
         }
         .defaultSize(width: 560, height: 720)
+
+        MenuBarExtra {
+            MenuBarContent(model: model)
+        } label: {
+            Image(systemName: menuBarIcon)
+        }
+    }
+}
+
+/// Contenuto della menu bar extra: stato dei servizi + azioni globali + apri finestra.
+struct MenuBarContent: View {
+    var model: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        ForEach(model.services) { service in
+            Text("\(emoji(for: service.status)) \(service.config.displayName) — \(service.status.label)")
+        }
+        Divider()
+        Button("Avvia tutti") { model.startAll() }
+            .disabled(model.services.allSatisfy { $0.processAlive })
+        Button("Ferma tutti") { model.stopAll() }
+            .disabled(!model.anyRunning)
+        Divider()
+        Button("Apri launcher") {
+            NSApp.activate(ignoringOtherApps: true)
+            openWindow(id: "main")
+        }
+    }
+
+    private func emoji(for status: ServiceStatus) -> String {
+        switch status {
+        case .stopped: return "⚪️"
+        case .starting: return "🟡"
+        case .running: return "🟢"
+        case .stopping: return "🟠"
+        case .crashed: return "🔴"
+        case .external: return "🔵"
+        }
     }
 }

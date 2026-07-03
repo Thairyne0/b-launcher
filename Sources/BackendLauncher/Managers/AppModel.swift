@@ -36,6 +36,14 @@ final class AppModel {
         for service in services { service.stop() }
     }
 
+    func start(profile: LaunchProfile) {
+        if !natsUp { showNATSWarning = true }
+        for service in services
+        where profile.serviceNames.contains(service.config.name) && !service.processAlive {
+            service.start()
+        }
+    }
+
     /// Stop di tutto con attesa (max ~6s: grace 5s di killpg + margine). Per il quit.
     func shutdownForQuit() async {
         stopAll()

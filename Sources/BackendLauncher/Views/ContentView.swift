@@ -27,6 +27,11 @@ struct ContentView: View {
                     NATSIndicator(up: model.natsUp)
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
+                    Menu("Profili", systemImage: "list.bullet.rectangle") {
+                        ForEach(ServiceConfig.profiles) { profile in
+                            Button(profile.name) { model.start(profile: profile) }
+                        }
+                    }
                     Button("Avvia tutti", systemImage: "play.fill") { model.startAll() }
                         .disabled(model.services.allSatisfy { $0.processAlive })
                     Button("Ferma tutti", systemImage: "stop.fill") { model.stopAll() }

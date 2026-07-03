@@ -51,4 +51,21 @@ import Testing
         await model.shutdownForQuit()
         #expect(!model.anyRunning)
     }
+
+    @Test func startProfileStartsOnlyItsServices() async {
+        let model = AppModel(configs: fakeConfigs, cwd: "/tmp", pollingEnabled: false)
+        let profile = LaunchProfile(name: "solo-a", serviceNames: ["a"])
+        model.start(profile: profile)
+        let aUp = await waitUntil { model.services[0].processAlive }
+        #expect(aUp)
+        #expect(!model.services[1].processAlive)
+        model.stopAll()
+        _ = await waitUntil { !model.anyRunning }
+    }
+
+    @Test func profilesAreConfigured() {
+        #expect(ServiceConfig.profiles.count == 2)
+        #expect(ServiceConfig.profiles[0].serviceNames == ["gateway", "id"])
+        #expect(ServiceConfig.profiles[1].serviceNames == ServiceConfig.all.map(\.name))
+    }
 }

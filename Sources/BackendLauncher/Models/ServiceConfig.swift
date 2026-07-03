@@ -1,5 +1,12 @@
 import Foundation
 
+/// Profili di avvio: sottoinsiemi di servizi avviabili in un click.
+struct LaunchProfile: Identifiable, Hashable {
+    let name: String
+    let serviceNames: [String]
+    var id: String { name }
+}
+
 /// Configurazione statica dei backend Skillera.
 /// Per aggiungere/togliere un servizio o cambiare il path del progetto si edita SOLO questo file.
 struct ServiceConfig: Identifiable, Hashable {
@@ -22,5 +29,10 @@ struct ServiceConfig: Identifiable, Hashable {
         ServiceConfig(name: "hr",      directory: "SKILLHR-BE",      port: nil),
         ServiceConfig(name: "certet",  directory: "SKILLCERTET-BE",  port: nil),
         ServiceConfig(name: "bill",    directory: "SKILLBILL-BE",    port: nil),
+    ]
+
+    static let profiles: [LaunchProfile] = [
+        LaunchProfile(name: "Minimo (gateway + id)", serviceNames: ["gateway", "id"]),
+        LaunchProfile(name: "Tutti", serviceNames: all.map(\.name)),
     ]
 }
