@@ -82,6 +82,12 @@ struct SidebarView: View {
     @State private var newProjectError: String?
     @State private var exportingProject: String?
     @State private var showImportSheet = false
+    @State private var settingsProject: String?
+    /// Progetto per cui è stato richiesto un cambio di cartella radice (dal menu contestuale
+    /// della sidebar): pilota il `.fileImporter` di rebase, condiviso da tutti i progetti così
+    /// da non dover tenere uno stato/picker per riga.
+    @State private var rebasingProject: String?
+    @State private var rebaseError: String?
     /// Progetti collassati (per id) — set vuoto di default: TUTTI i progetti partono espansi
     /// senza dover pre-popolare nulla da `projects` (evita di dover reagire a progetti nuovi).
     @State private var collapsedProjects: Set<String> = []
@@ -122,12 +128,7 @@ struct SidebarView: View {
                     ForEach(projects) { project in
                         projectDisclosureRow(project)
                             .contextMenu {
-                                Button("Esporta progetto…") {
-                                    exportingProject = project.id
-                                }
-                                Button("Elimina progetto", role: .destructive) {
-                                    deletingProject = project.id
-                                }
+                                projectContextMenuContent(project)
                             }
                     }
                 }
@@ -182,6 +183,28 @@ struct SidebarView: View {
             ImportTemplateSheet(model: model) {
                 showImportSheet = false
             }
+        }
+        .sheet(item: Binding(
+            get: { settingsProject.map(SheetProjectID.init) },
+            set: { settingsProject = $0?.id }
+        )) { wrapped in
+            ProjectSettingsSheet(model: model, projectID: wrapped.id) {
+                settingsProject = nil
+            }
+        }
+        .fileImporter(isPresented: Binding(
+            get: { rebasingProject != nil },
+            set: { if !$0 { rebasingProject = nil } }
+        ), allowedContentTypes: [.folder]) { result in
+            handleRebasePick(result)
+        }
+        .alert("Impossibile cambiare cartella", isPresented: Binding(
+            get: { rebaseError != nil },
+            set: { if !$0 { rebaseError = nil } }
+        )) {
+            Button("OK", role: .cancel) { rebaseError = nil }
+        } message: {
+            Text(rebaseError ?? "")
         }
         .confirmationDialog(
             "Eliminare questo backend?",
@@ -296,6 +319,44 @@ struct SidebarView: View {
         }
     }
 
+    /// Contenuto del menu contestuale sul rigo progetto: avvia/ferma (in cima, per accesso
+    /// rapido), poi impostazioni/cambio cartella, poi export, poi elimina — in questo ordine
+    /// esplicito per separare le azioni "frequenti" da quelle "distruttive/di configurazione".
+    @ViewBuilder
+    private func projectContextMenuContent(_ project: StoredProject) -> some View {
+        let isRunning = controllers(forProject: project).contains { $0.processAlive }
+
+        Button("Avvia progetto") {
+            model.startProject(named: project.id)
+        }
+        .disabled(controllers(forProject: project).allSatisfy { $0.processAlive })
+
+        Button("Ferma progetto") {
+            model.stopProject(named: project.id)
+        }
+        .disabled(!isRunning)
+
+        Divider()
+
+        Button("Impostazioni progetto…") {
+            settingsProject = project.id
+        }
+
+        Button("Cambia cartella radice…") {
+            rebasingProject = project.id
+        }
+
+        Button("Esporta progetto…") {
+            exportingProject = project.id
+        }
+
+        Divider()
+
+        Button("Elimina progetto", role: .destructive) {
+            deletingProject = project.id
+        }
+    }
+
     /// `projectID` è l'id reale del progetto (da `StoredProject.id`, passato esplicitamente
     /// dal chiamante) — NON derivato da `controller.config.projectName`, che è il nome
     /// leggibile del progetto e coincide con l'id solo perché `StoredProject.id == name`.
@@ -352,6 +413,26 @@ struct SidebarView: View {
         }
         store.removeProject(id: id)
         model.reloadFromStore()
+    }
+
+    /// Esito del `.fileImporter` di "Cambia cartella radice…": ribasa il progetto in
+    /// `rebasingProject` sulla cartella scelta. Errori (es. progetto sparito nel frattempo)
+    /// finiscono in `rebaseError`, mostrato da un alert dedicato invece di fallire silenziosamente.
+    private func handleRebasePick(_ result: Result<URL, Error>) {
+        guard let projectID = rebasingProject else { return }
+        rebasingProject = nil
+        guard let store = model.store else { return }
+        switch result {
+        case .failure(let error):
+            rebaseError = error.localizedDescription
+        case .success(let url):
+            do {
+                try store.rebaseProject(id: projectID, ontoRoot: url)
+                model.reloadFromStore()
+            } catch {
+                rebaseError = error.localizedDescription
+            }
+        }
     }
 
     private func confirmAddProject() {

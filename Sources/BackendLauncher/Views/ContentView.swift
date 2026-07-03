@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Bindable var model: AppModel
@@ -6,6 +7,11 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("sidebarSelection") private var selectionRaw = "grid"
     @State private var contentWidth: CGFloat = 1200
+    /// Progetto per cui è stato richiesto un cambio di cartella radice dal banner "cartelle
+    /// mancanti" — pilota il `.fileImporter` di rebase, stessa meccanica del menu contestuale
+    /// in `SidebarView` ma di competenza di questa vista perché il banner vive nel dettaglio.
+    @State private var rebasingProjectID: String?
+    @State private var rebaseError: String?
 
     private var gridColumns: [GridItem] {
         contentWidth < 860
@@ -45,6 +51,20 @@ struct ContentView: View {
                 selectionRaw = SidebarSelectionCoding.encode(.grid)
             }
         }
+        .fileImporter(isPresented: Binding(
+            get: { rebasingProjectID != nil },
+            set: { if !$0 { rebasingProjectID = nil } }
+        ), allowedContentTypes: [.folder]) { result in
+            handleRebasePick(result)
+        }
+        .alert("Impossibile cambiare cartella", isPresented: Binding(
+            get: { rebaseError != nil },
+            set: { if !$0 { rebaseError = nil } }
+        )) {
+            Button("OK", role: .cancel) { rebaseError = nil }
+        } message: {
+            Text(rebaseError ?? "")
+        }
         .frame(minWidth: 760, minHeight: 480)
     }
 
@@ -73,8 +93,13 @@ struct ContentView: View {
                 if projectServices.isEmpty {
                     ContentUnavailableView("Progetto non trovato", systemImage: "questionmark.folder")
                 } else {
-                    gridView(services: projectServices)
-                        .transition(.opacity)
+                    VStack(spacing: 14) {
+                        if allWorkingDirectoriesMissing(projectServices) {
+                            missingRootBanner(projectID: id)
+                        }
+                        gridView(services: projectServices)
+                    }
+                    .transition(.opacity)
                 }
             }
         }
@@ -172,6 +197,63 @@ struct ContentView: View {
             proxy.size.width
         } action: { newWidth in
             contentWidth = newWidth
+        }
+    }
+
+    /// Vero se `services` non è vuoto e NESSUNA working directory esiste su disco — segnale
+    /// che l'intero progetto è stato spostato/clonato su un Mac diverso e la root va
+    /// riconfigurata. Pura funzione dei controller (nessuna dipendenza da `self`) così è
+    /// testabile in isolamento.
+    private func allWorkingDirectoriesMissing(_ services: [ServiceController]) -> Bool {
+        !services.isEmpty && services.allSatisfy {
+            !FileManager.default.fileExists(atPath: $0.config.workingDirectory.path)
+        }
+    }
+
+    /// Banner "cartelle mancanti", mostrato solo nel dettaglio filtrato su UN progetto
+    /// (`.project(id)`): in `.grid` la vista mescola servizi di progetti diversi, quindi un
+    /// singolo banner "cambia cartella" non avrebbe un progetto univoco a cui applicarsi —
+    /// mostrarlo lì avrebbe richiesto o un banner per progetto (rumoroso, la griglia "tutti" è
+    /// vista come cruscotto d'insieme non di configurazione) o nascondere quale progetto è
+    /// interessato (ambiguo). Si preferisce la versione semplice e inequivocabile: solo in
+    /// `.project`, dove il banner ha esattamente un target.
+    private func missingRootBanner(projectID: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .imageScale(.large)
+            Text("Le cartelle di questo progetto non esistono su questo Mac.")
+                .font(.callout.weight(.medium))
+            Spacer()
+            Button("Cambia cartella radice…") {
+                rebasingProjectID = projectID
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .glassEffect(.regular.tint(.orange.opacity(0.25)), in: .rect(cornerRadius: 14))
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+    }
+
+    /// Esito del `.fileImporter` del banner "cartelle mancanti": ribasa il progetto scelto
+    /// sulla nuova root. Stessa semantica del rebase nel menu contestuale della sidebar
+    /// (`SidebarView.handleRebasePick`), duplicata qui perché il banner vive nel dettaglio e
+    /// non ha accesso allo stato privato della sidebar.
+    private func handleRebasePick(_ result: Result<URL, Error>) {
+        guard let projectID = rebasingProjectID else { return }
+        rebasingProjectID = nil
+        guard let store = model.store else { return }
+        switch result {
+        case .failure(let error):
+            rebaseError = error.localizedDescription
+        case .success(let url):
+            do {
+                try store.rebaseProject(id: projectID, ontoRoot: url)
+                model.reloadFromStore()
+            } catch {
+                rebaseError = error.localizedDescription
+            }
         }
     }
 }
