@@ -4,7 +4,7 @@ import SwiftUI
 /// Card glass di un backend: stato, controlli, terminale espandibile.
 struct ServiceCardView: View {
     var controller: ServiceController
-    @State private var showTerminal = false
+    @Binding var showTerminal: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -74,6 +74,7 @@ struct ServiceCardView: View {
                     .padding([.horizontal, .bottom], 16)
             }
         }
+        .frame(minHeight: 176, alignment: .top)
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
         .contextMenu {
             Button("Apri directory nel Finder") {

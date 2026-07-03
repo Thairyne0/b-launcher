@@ -9,6 +9,9 @@ enum LauncherPage: String, CaseIterable {
 struct ContentView: View {
     @Bindable var model: AppModel
     @AppStorage("launcherPage") private var page: LauncherPage = .dashboard
+    @State private var expandedServices: Set<String> = []
+
+    private var allExpanded: Bool { expandedServices.count == model.services.count }
 
     var body: some View {
         NavigationStack {
@@ -20,13 +23,16 @@ struct ContentView: View {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 470, maximum: .infinity), spacing: 16)],
                                       spacing: 20) {
                                 ForEach(model.services) { controller in
-                                    ServiceCardView(controller: controller)
+                                    ServiceCardView(controller: controller, showTerminal: Binding(
+                                        get: { expandedServices.contains(controller.id) },
+                                        set: { isOn in
+                                            if isOn { expandedServices.insert(controller.id) } else { expandedServices.remove(controller.id) }
+                                        }
+                                    ))
                                 }
                             }
                             .padding(20)
-                            .frame(maxWidth: 1150)
                         }
-                        .frame(maxWidth: .infinity)
                     }
                 case .focus:
                     FocusView(model: model)
@@ -54,6 +60,12 @@ struct ContentView: View {
                     .labelsHidden()
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
+                    Button(allExpanded ? "Comprimi tutti" : "Espandi tutti",
+                           systemImage: allExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical") {
+                        withAnimation(.snappy) {
+                            expandedServices = allExpanded ? [] : Set(model.services.map(\.id))
+                        }
+                    }
                     Menu("Profili", systemImage: "list.bullet.rectangle") {
                         ForEach(ServiceConfig.profiles) { profile in
                             Button(profile.name) { model.start(profile: profile) }
