@@ -64,7 +64,9 @@ struct BackendLauncherApp: App {
         .defaultSize(width: 560, height: 720)
         .commands {
             CommandMenu("Servizi") {
-                Button(model.allExpanded ? "Comprimi tutti i terminali" : "Espandi tutti i terminali") {
+                // Etichetta statica: i contenuti di .commands non si ri-valutano
+                // in modo affidabile al cambio di stato (limite SwiftUI documentato).
+                Button("Espandi/comprimi tutti i terminali") {
                     model.toggleAllTerminals()
                 }
                 .keyboardShortcut("e", modifiers: .command)
