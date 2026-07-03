@@ -52,7 +52,7 @@ import Testing
     @Test func sixServicesConfigured() {
         #expect(ServiceConfig.all.count == 6)
         #expect(ServiceConfig.all.map(\.name) == ["gateway", "id", "atlas", "hr", "certet", "bill"])
-        #expect(ServiceConfig.all.map(\.port) == [4000, 4001, 4003, 4006, 4010, 4012])
+        #expect(ServiceConfig.all.map(\.port) == [4000, 4001, nil, nil, nil, nil])
         for c in ServiceConfig.all {
             #expect(c.command == "npm run start:dev")
             #expect(c.workingDirectory.path.hasPrefix(ServiceConfig.projectRoot.path))

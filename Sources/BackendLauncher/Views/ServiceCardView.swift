@@ -14,7 +14,7 @@ struct ServiceCardView: View {
                     Text(controller.config.displayName)
                         .font(.headline)
                     HStack(spacing: 4) {
-                        Text("porta \(String(controller.config.port))")
+                        Text(controller.config.port.map { "porta \(String($0))" } ?? "via NATS")
                         Text("·")
                         Text(controller.status.label)
                             .foregroundStyle(controller.status.color)

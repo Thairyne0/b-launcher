@@ -45,11 +45,13 @@ final class AppModel {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let ports = [ServiceConfig.natsPort] + self.services.map(\.config.port)
+                let ports = [ServiceConfig.natsPort] + self.services.compactMap(\.config.port)
                 let results = await Self.checkPorts(ports)
                 self.natsUp = results[ServiceConfig.natsPort] ?? false
                 for service in self.services {
-                    service.portOpen = results[service.config.port] ?? false
+                    if let p = service.config.port {
+                        service.portOpen = results[p] ?? false
+                    }
                 }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }

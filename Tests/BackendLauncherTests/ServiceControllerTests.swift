@@ -80,4 +80,31 @@ private func fakeConfig(command: String) -> ServiceConfig {
         c.start()
         #expect(c.status == .crashed(exitCode: -1))
     }
+
+    @Test func natsOnlyServiceTurnsRunningOnLogMarker() async {
+        // `start()` fa `exec <command>`: exec sostituisce l'intero processo shell con il
+        // primo comando, quindi un `;` a livello superiore non lascerebbe mai eseguire il
+        // secondo comando. `sh -c "..."` è il comando singolo che exec sostituisce, e AL SUO
+        // INTERNO la sequenza `echo ...; sleep 60` gira normalmente.
+        let config = ServiceConfig(name: "fake", directory: "", port: nil,
+                                   command: #"sh -c "echo Nest microservice successfully started; sleep 60""#)
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.start()
+        let running = await waitUntil { c.status == .running }
+        #expect(running)
+        c.stop()
+        let stopped = await waitUntil { c.status == .stopped }
+        #expect(stopped)  // marker resettato: niente .external fantasma
+    }
+
+    @Test func natsOnlyServiceStaysStartingWithoutMarker() async {
+        let config = ServiceConfig(name: "fake", directory: "", port: nil, command: "sleep 60")
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.start()
+        _ = await waitUntil { c.status == .starting }
+        c.portOpen = true  // il poller non deve mai influire sui solo-NATS, ma anche se accadesse...
+        #expect(c.status == .starting)  // ...il marker resta l'unico segnale
+        c.stop()
+        _ = await waitUntil { c.status == .stopped }
+    }
 }

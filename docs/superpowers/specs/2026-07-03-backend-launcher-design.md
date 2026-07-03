@@ -24,12 +24,12 @@ Root progetto: `/Users/retr0/Documents/skilllocale/SkillLocale` (costante in `Se
 |---|---|---|---|
 | gateway | `SKILLGATEWAY-BE` | 4000 | `npm run start:dev` |
 | id | `SKILLID-BE` | 4001 (OIDC HTTP) | `npm run start:dev` |
-| atlas | `SKILLATLAS-BE` | 4003 | `npm run start:dev` |
-| hr | `SKILLHR-BE` | 4006 | `npm run start:dev` |
-| certet | `SKILLCERTET-BE` | 4010 | `npm run start:dev` |
-| bill | `SKILLBILL-BE` | 4012 | `npm run start:dev` |
+| atlas | `SKILLATLAS-BE` | — (solo NATS) | `npm run start:dev` |
+| hr | `SKILLHR-BE` | — (solo NATS) | `npm run start:dev` |
+| certet | `SKILLCERTET-BE` | — (solo NATS) | `npm run start:dev` |
+| bill | `SKILLBILL-BE` | — (solo NATS) | `npm run start:dev` |
 
-L'infrastruttura (NATS/Redis/Milvus in Docker) NON è gestita dal launcher: i container restano sempre attivi da soli. Il launcher mostra solo un **indicatore passivo NATS** (porta 4222) nella toolbar — verde/rosso — perché senza NATS i backend non comunicano.
+L'infrastruttura (NATS/Redis/Milvus in Docker) NON è gestita dal launcher: i container restano sempre attivi da soli. Il launcher mostra solo un **indicatore passivo NATS** (porta 4222) nella toolbar — verde/rosso — perché senza NATS i backend non comunicano. I servizi atlas, hr, certet e bill sono microservizi solo-NATS senza porta HTTP: il loro stato "in esecuzione" deriva dal marker "successfully started" nei log NestJS, non da una porta.
 
 ## Architettura
 
@@ -73,9 +73,9 @@ Poll porta TCP ogni 2s + osservazione vita processo:
 |---|---|---|
 | fermo | grigio | nessun processo |
 | starting | giallo (pulsante) | processo vivo, porta chiusa |
-| running | verde | processo vivo, porta aperta |
+| running | verde | processo vivo, porta aperta (HTTP) o marker di avvio nei log (solo-NATS) |
 | crashed | rosso | processo morto da solo (exit code mostrato) |
-| esterno | blu | porta aperta ma processo non del launcher → start disabilitato |
+| esterno | blu | porta aperta ma processo non del launcher → start disabilitato (solo servizi con porta HTTP) |
 
 NATS (spia in toolbar): verde = porta 4222 aperta, rosso = chiusa.
 
