@@ -70,11 +70,11 @@ struct ServiceCardView: View {
 
             if showTerminal {
                 TerminalView(logs: controller.logs)
-                    .frame(height: 300)
+                    .frame(height: 340)
                     .padding([.horizontal, .bottom], 16)
             }
         }
-        .frame(minHeight: 176, alignment: .top)
+        .frame(minHeight: 240, alignment: .top)
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
         .contextMenu {
             Button("Apri directory nel Finder") {

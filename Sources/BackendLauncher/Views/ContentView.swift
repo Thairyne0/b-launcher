@@ -10,8 +10,15 @@ struct ContentView: View {
     @Bindable var model: AppModel
     @AppStorage("launcherPage") private var page: LauncherPage = .dashboard
     @State private var expandedServices: Set<String> = []
+    @State private var contentWidth: CGFloat = 1200
 
     private var allExpanded: Bool { expandedServices.count == model.services.count }
+
+    private var gridColumns: [GridItem] {
+        contentWidth < 860
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible(), spacing: 16), GridItem(.flexible())]
+    }
 
     var body: some View {
         NavigationStack {
@@ -20,8 +27,7 @@ struct ContentView: View {
                 case .dashboard:
                     ScrollView {
                         GlassEffectContainer(spacing: 14) {
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 470, maximum: .infinity), spacing: 16)],
-                                      spacing: 20) {
+                            LazyVGrid(columns: gridColumns, spacing: 20) {
                                 ForEach(model.services) { controller in
                                     ServiceCardView(controller: controller, showTerminal: Binding(
                                         get: { expandedServices.contains(controller.id) },
@@ -33,6 +39,11 @@ struct ContentView: View {
                             }
                             .padding(20)
                         }
+                    }
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.width
+                    } action: { newWidth in
+                        contentWidth = newWidth
                     }
                 case .focus:
                     FocusView(model: model)
