@@ -216,4 +216,34 @@ import Testing
             at something.js:1:1
         """)
     }
+
+    // MARK: - searchMode
+
+    @Test func highlightModeKeepsAllLines() {
+        let store = LogStore()
+        store.ingest("hello\nworld\nfoo\n")
+        store.searchText = "world"
+        store.searchMode = .highlight
+        #expect(store.visibleLines.count == 3)
+        store.searchMode = .filter
+        #expect(store.visibleLines.count == 1)
+    }
+
+    @Test func searchMatchIDsFindsMatches() {
+        let store = LogStore()
+        store.ingest("hello\nWORLD\nfoo\n")
+        store.searchText = "world"
+        #expect(store.searchMatchIDs == [1])
+        store.searchText = ""
+        #expect(store.searchMatchIDs == [])
+    }
+
+    @Test func searchMatchIDsRespectsLevelFilter() {
+        let store = LogStore()
+        store.ingest("[Nest] 1  - now     LOG [X] boom fine\n")
+        store.ingest("[Nest] 1  - now     ERROR [X] boom\n")
+        store.levelFilter = .errors
+        store.searchText = "boom"
+        #expect(store.searchMatchIDs == [1])
+    }
 }

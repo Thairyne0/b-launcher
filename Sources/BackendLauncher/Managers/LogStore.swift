@@ -23,10 +23,19 @@ final class LogStore {
         case errors = "Errori"
     }
 
+    /// Modalità di ricerca: `.filter` nasconde le righe non corrispondenti, `.highlight`
+    /// le mantiene tutte visibili (il filtro di livello resta comunque applicato) e lascia
+    /// che sia la view a evidenziare i match.
+    enum SearchMode: String, CaseIterable {
+        case filter = "Filtra"
+        case highlight = "Evidenzia"
+    }
+
     private(set) var lines: [LogLine] = []
     private(set) var errorCount = 0
     var searchText: String = ""
     var levelFilter: LevelFilter = .all
+    var searchMode: SearchMode = .filter
 
     private var nextID = 0
     private var partial = ""
@@ -45,17 +54,29 @@ final class LogStore {
     }
 
     var visibleLines: [LogLine] {
-        let levelFiltered: [LogLine]
+        let levelFiltered = self.levelFiltered
+        guard searchMode == .filter, !searchText.isEmpty else { return levelFiltered }
+        return levelFiltered.filter { $0.text.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    /// Id delle righe (dopo `levelFilter`, indipendentemente da `searchMode`) il cui testo
+    /// contiene `searchText` case-insensitive. Vuoto quando `searchText` è vuoto.
+    var searchMatchIDs: [Int] {
+        guard !searchText.isEmpty else { return [] }
+        return levelFiltered
+            .filter { $0.text.localizedCaseInsensitiveContains(searchText) }
+            .map(\.id)
+    }
+
+    private var levelFiltered: [LogLine] {
         switch levelFilter {
         case .all:
-            levelFiltered = lines
+            return lines
         case .warnPlus:
-            levelFiltered = lines.filter { $0.level == .error || $0.level == .warning }
+            return lines.filter { $0.level == .error || $0.level == .warning }
         case .errors:
-            levelFiltered = lines.filter { $0.level == .error }
+            return lines.filter { $0.level == .error }
         }
-        guard !searchText.isEmpty else { return levelFiltered }
-        return levelFiltered.filter { $0.text.localizedCaseInsensitiveContains(searchText) }
     }
 
     func ingest(_ chunk: String) {

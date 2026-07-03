@@ -5,58 +5,126 @@ import AppKit
 struct TerminalView: View {
     @Bindable var logs: LogStore
     @State private var autoscroll = true
+    @State private var currentMatchIndex = 0
+
+    private var currentMatchOrdinal: Int {
+        guard !logs.searchMatchIDs.isEmpty else { return 0 }
+        return currentMatchIndex + 1
+    }
+
+    private var currentMatchID: Int? {
+        let matches = logs.searchMatchIDs
+        guard matches.indices.contains(currentMatchIndex) else { return nil }
+        return matches[currentMatchIndex]
+    }
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 10) {
-                HStack(spacing: 4) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Cerca nei log", text: $logs.searchText)
-                        .textFieldStyle(.plain)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.quaternary.opacity(0.5), in: .capsule)
-                .frame(maxWidth: 240)
-
-                Picker("", selection: $logs.levelFilter) {
-                    ForEach(LogStore.LevelFilter.allCases, id: \.self) { filter in
-                        Text(filter.rawValue).tag(filter)
+        ScrollViewReader { proxy in
+            VStack(spacing: 6) {
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Cerca nei log", text: $logs.searchText)
+                            .textFieldStyle(.plain)
                     }
-                }
-                .pickerStyle(.segmented)
-                .controlSize(.small)
-                .frame(maxWidth: 180)
-                .labelsHidden()
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.quaternary.opacity(0.5), in: .capsule)
+                    .frame(maxWidth: 240)
 
-                Spacer()
+                    if !logs.searchText.isEmpty {
+                        Text("\(currentMatchOrdinal)/\(logs.searchMatchIDs.count)")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
 
-                Toggle("Autoscroll", isOn: $autoscroll)
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
+                        Button {
+                            stepMatch(by: -1, proxy: proxy)
+                        } label: {
+                            Image(systemName: "chevron.up")
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .help("Match precedente")
+
+                        Button {
+                            stepMatch(by: 1, proxy: proxy)
+                        } label: {
+                            Image(systemName: "chevron.down")
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .help("Match successivo")
+                    }
+
+                    searchModeToggle
+
+                    Picker("", selection: $logs.levelFilter) {
+                        ForEach(LogStore.LevelFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                     .controlSize(.small)
+                    .frame(maxWidth: 180)
+                    .labelsHidden()
 
-                Button {
-                    copyToPasteboard(logs.visibleLines.map(\.text).joined(separator: "\n"))
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .help("Copia log visibile")
+                    Spacer()
 
-                Button {
-                    logs.clear()
-                } label: {
-                    Image(systemName: "trash")
+                    Toggle("Autoscroll", isOn: $autoscroll)
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
+                        .controlSize(.small)
+
+                    Button {
+                        copyToPasteboard(logs.visibleLines.map(\.text).joined(separator: "\n"))
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Copia log visibile")
+
+                    Button {
+                        logs.clear()
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Pulisci")
                 }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .help("Pulisci")
+
+                logArea(proxy: proxy)
             }
+        }
+        .onChange(of: logs.searchText) { _, _ in
+            currentMatchIndex = 0
+        }
+    }
 
-            ScrollViewReader { proxy in
+    private var searchModeToggle: some View {
+        Button {
+            logs.searchMode = logs.searchMode == .filter ? .highlight : .filter
+        } label: {
+            Image(systemName: logs.searchMode == .filter
+                  ? "line.3.horizontal.decrease.circle"
+                  : "highlighter")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .help(logs.searchMode == .filter
+              ? "Modalità: filtra righe non corrispondenti"
+              : "Modalità: evidenzia senza nascondere righe")
+    }
+
+    @ViewBuilder
+    private func logArea(proxy: ScrollViewProxy) -> some View {
+        Group {
+            if logs.visibleLines.isEmpty {
+                emptyState
+            } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 1) {
                         ForEach(logs.visibleLines) { line in
@@ -65,6 +133,7 @@ struct TerminalView: View {
                                 .lineSpacing(1.5)
                                 .foregroundStyle(color(for: line.level))
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(line.id == currentMatchID ? Color.yellow.opacity(0.15) : Color.clear)
                                 .id(line.id)
                                 .contextMenu {
                                     Button("Copia riga") {
@@ -84,14 +153,36 @@ struct TerminalView: View {
                     .padding(10)
                     .textSelection(.enabled)
                 }
-                .background(Color(red: 0.05, green: 0.07, blue: 0.10).opacity(0.92), in: .rect(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.08)))
-                .onChange(of: logs.lines.last?.id) { _, newID in
-                    guard autoscroll, logs.searchText.isEmpty, let newID else { return }
-                    proxy.scrollTo(newID, anchor: .bottom)
-                }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(red: 0.05, green: 0.07, blue: 0.10).opacity(0.92), in: .rect(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.08)))
+        .onChange(of: logs.lines.last?.id) { _, newID in
+            guard autoscroll, logs.searchText.isEmpty, let newID else { return }
+            proxy.scrollTo(newID, anchor: .bottom)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack {
+            Spacer()
+            Text(logs.lines.isEmpty
+                 ? "Nessun output — avvia il servizio"
+                 : "Nessuna riga corrisponde a filtro o ricerca")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func stepMatch(by delta: Int, proxy: ScrollViewProxy) {
+        let matches = logs.searchMatchIDs
+        guard !matches.isEmpty else { return }
+        let count = matches.count
+        currentMatchIndex = ((currentMatchIndex + delta) % count + count) % count
+        proxy.scrollTo(matches[currentMatchIndex], anchor: .center)
     }
 
     private func color(for level: LogLevel) -> Color {

@@ -45,6 +45,14 @@ struct FocusView: View {
                     .scaleEffect(0.7)
                 Text(controller.config.displayName)
                     .font(.caption.weight(.medium))
+                if controller.logs.errorCount > 0 {
+                    Text("\(controller.logs.errorCount)")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.red.opacity(0.85), in: .capsule)
+                        .foregroundStyle(.white)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
