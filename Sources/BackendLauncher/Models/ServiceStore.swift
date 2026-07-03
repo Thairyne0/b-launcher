@@ -50,6 +50,8 @@ enum StoreError: LocalizedError, Equatable {
     case duplicateProjectName(String)
     case duplicateServiceName(String)
     case projectNotFound(String)
+    case duplicateProfileName(String)
+    case unknownServiceInProfile(profile: String, service: String)
 
     var errorDescription: String? {
         switch self {
@@ -59,6 +61,10 @@ enum StoreError: LocalizedError, Equatable {
             "Esiste già un servizio chiamato \"\(name)\" in questo progetto."
         case .projectNotFound(let id):
             "Progetto \"\(id)\" non trovato."
+        case .duplicateProfileName(let name):
+            "Esiste già un profilo chiamato \"\(name)\" in questo progetto."
+        case .unknownServiceInProfile(let profile, let service):
+            "Il profilo \"\(profile)\" fa riferimento al servizio \"\(service)\", che non esiste in questo progetto."
         }
     }
 }
@@ -244,6 +250,116 @@ final class ServiceStore {
         }
         guard !collision else { throw StoreError.duplicateServiceName(service.name) }
         projects[projectIndex].services[serviceIndex] = service
+        save()
+    }
+
+    /// Rinomina un progetto. Nome normalizzato (trim), non vuoto, univoco (case-insensitive)
+    /// tra gli ALTRI progetti. `projectNotFound` se `id` non corrisponde a nessun progetto.
+    ///
+    /// ATTENZIONE — semantica del rename: `StoredProject.id` == `name`, quindi rinominare
+    /// cambia anche l'id del progetto. Gli id namespaced dei suoi servizi in `AppModel`
+    /// ("VecchioNome/svc" → "NuovoNome/svc") cambiano di conseguenza: il chiamante DEVE
+    /// invocare `AppModel.reloadFromStore()` dopo questa chiamata. Per `reloadFromStore()`
+    /// un id namespaced cambiato è indistinguibile da "rimuovi il vecchio, aggiungi il nuovo"
+    /// (stessa semantica di `updateService` con rename) — un servizio del progetto rinominato
+    /// in esecuzione al momento del reload verrà quindi FERMATO. Eventuali selezioni persistite
+    /// altrove (es. chip di focus UI) che referenziano l'id vecchio si "auto-guariscono"
+    /// semplicemente sparendo (comportamento accettato, non un bug).
+    func renameProject(id: String, to newName: String) throws {
+        guard let index = projects.firstIndex(where: { $0.id == id }) else {
+            throw StoreError.projectNotFound(id)
+        }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw StoreError.duplicateProjectName(newName) }
+        let collision = projects.enumerated().contains { otherIndex, project in
+            otherIndex != index && project.name.caseInsensitiveCompare(trimmed) == .orderedSame
+        }
+        guard !collision else { throw StoreError.duplicateProjectName(trimmed) }
+        projects[index].name = trimmed
+        save()
+    }
+
+    /// Ribasa le directory dei servizi di un progetto su una nuova root. La root comune
+    /// CORRENTE viene calcolata dalle directory esistenti (stessa euristica dell'export
+    /// template, `ProjectTemplateCodec.commonRoot`); ogni servizio la cui directory ricade
+    /// sotto quella root comune viene ribasato su `newRoot` preservando il suffisso relativo.
+    /// Servizi la cui directory è FUORI dalla root comune (o se non esiste una root comune,
+    /// es. un solo servizio con directory diversa da tutte le altre) restano INVARIATI
+    /// (path assoluto originale preservato — comportamento esplicito, non un bug: non
+    /// c'è modo sicuro di dedurre dove ribasarli). `projectNotFound` se `id` non esiste.
+    func rebaseProject(id: String, ontoRoot newRoot: URL) throws {
+        guard let index = projects.firstIndex(where: { $0.id == id }) else {
+            throw StoreError.projectNotFound(id)
+        }
+        projects[index].services = Self.rebasedServices(
+            projects[index].services,
+            ontoRoot: newRoot
+        )
+        save()
+    }
+
+    /// Logica pura di rebase, testabile senza istanziare uno store: calcola la root comune
+    /// delle directory correnti e ribasa ogni servizio che vi ricade sotto su `newRoot`.
+    static func rebasedServices(_ services: [StoredService], ontoRoot newRoot: URL) -> [StoredService] {
+        guard let commonRoot = ProjectTemplateCodec.commonRoot(forServiceDirectories: services.map(\.directory)) else {
+            return services
+        }
+        let standardizedCommonRoot = commonRoot.standardizedFileURL.path
+        let commonRootWithSlash = standardizedCommonRoot.hasSuffix("/") ? standardizedCommonRoot : standardizedCommonRoot + "/"
+        return services.map { service in
+            var updated = service
+            let standardizedDirectory = URL(fileURLWithPath: service.directory).standardizedFileURL.path
+            if standardizedDirectory == standardizedCommonRoot {
+                updated.directory = newRoot.standardizedFileURL.path
+            } else if standardizedDirectory.hasPrefix(commonRootWithSlash) {
+                let suffix = String(standardizedDirectory.dropFirst(commonRootWithSlash.count))
+                updated.directory = newRoot.appendingPathComponent(suffix).standardizedFileURL.path
+            }
+            // Fuori dalla root comune: invariato (documentato).
+            return updated
+        }
+    }
+
+    /// Imposta, sostituisce o rimuove (con `nil`) l'infra check di un progetto (es. NATS).
+    /// `projectNotFound` se `projectID` non esiste.
+    func updateInfraCheck(projectID: String, infraCheck: StoredInfraCheck?) throws {
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw StoreError.projectNotFound(projectID)
+        }
+        projects[index].infraCheck = infraCheck
+        save()
+    }
+
+    /// Sostituisce l'intera lista di profili di un progetto. Validazione:
+    /// - ogni nome profilo non vuoto (dopo trim) e univoco (case-insensitive) tra i profili
+    ///   passati;
+    /// - ogni `serviceNames` deve fare riferimento solo a nomi di servizio ESISTENTI nel
+    ///   progetto (altrimenti `.unknownServiceInProfile`).
+    /// `projectNotFound` se `projectID` non esiste. Su validazione fallita, lo store resta
+    /// invariato (nessuna scrittura parziale).
+    func updateProfiles(projectID: String, profiles: [StoredProfile]) throws {
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw StoreError.projectNotFound(projectID)
+        }
+        var seenNames: Set<String> = []
+        for profile in profiles {
+            let trimmed = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { throw StoreError.duplicateProfileName(profile.name) }
+            let normalized = trimmed.lowercased()
+            guard !seenNames.contains(normalized) else {
+                throw StoreError.duplicateProfileName(trimmed)
+            }
+            seenNames.insert(normalized)
+        }
+        let serviceNames = Set(projects[index].services.map { $0.name.lowercased() })
+        for profile in profiles {
+            for serviceName in profile.serviceNames {
+                guard serviceNames.contains(serviceName.lowercased()) else {
+                    throw StoreError.unknownServiceInProfile(profile: profile.name, service: serviceName)
+                }
+            }
+        }
+        projects[index].profiles = profiles
         save()
     }
 

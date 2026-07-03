@@ -405,6 +405,184 @@ import Testing
         #expect(store.projects.count == 1)
     }
 
+    // MARK: - renameProject
+
+    @Test func renameProjectRenamesAndPersists() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        try store.renameProject(id: "Skillera", to: "Skillera2")
+
+        #expect(store.projects.count == 1)
+        #expect(store.projects.first?.name == "Skillera2")
+        #expect(store.projects.contains { $0.name == "Skillera" } == false)
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.name == "Skillera2")
+    }
+
+    @Test func renameProjectRejectsDuplicateCaseInsensitive() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        try store.addProject(named: "Secondo")
+        #expect(throws: StoreError.self) {
+            try store.renameProject(id: "Secondo", to: "skillera")
+        }
+        #expect(store.projects.contains { $0.name == "Secondo" })
+    }
+
+    @Test func renameProjectThrowsWhenMissing() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        #expect(throws: StoreError.self) {
+            try store.renameProject(id: "non-esiste", to: "Nuovo")
+        }
+    }
+
+    @Test func renameProjectRejectsEmptyName() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        #expect(throws: StoreError.self) {
+            try store.renameProject(id: "Skillera", to: "   ")
+        }
+        #expect(store.projects.first?.name == "Skillera")
+    }
+
+    // MARK: - rebaseProject
+
+    @Test func rebaseProjectRebasesDirsUnderCommonRoot() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        // Skillera migrato: tutti i servizi condividono la stessa root comune (projectRoot).
+        let before = try #require(store.projects.first)
+        let oldCommonRoot = try #require(ProjectTemplateCodec.commonRoot(
+            forServiceDirectories: before.services.map(\.directory)))
+
+        let newRoot = URL(fileURLWithPath: "/tmp/new-root-\(UUID().uuidString)")
+        try store.rebaseProject(id: "Skillera", ontoRoot: newRoot)
+
+        let after = try #require(store.projects.first)
+        for (beforeService, afterService) in zip(before.services, after.services) {
+            let standardizedOld = URL(fileURLWithPath: beforeService.directory).standardizedFileURL.path
+            let suffix = String(standardizedOld.dropFirst(oldCommonRoot.path.count))
+            let expected = newRoot.appendingPathComponent(suffix).standardizedFileURL.path
+            #expect(afterService.directory == expected)
+        }
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.services.first?.directory == after.services.first?.directory)
+    }
+
+    @Test func rebaseProjectLeavesDirOutsideCommonRootUnchanged() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        var project = try #require(store.projects.first)
+        // Aggiungi un servizio con directory completamente fuori dalla root comune degli altri.
+        project.services.append(StoredService(
+            name: "outsider",
+            directory: "/opt/elsewhere/outsider",
+            command: "npm run start:dev",
+            readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil)
+        ))
+        store.replaceProject(project)
+        store.save()
+
+        let newRoot = URL(fileURLWithPath: "/tmp/new-root-\(UUID().uuidString)")
+        try store.rebaseProject(id: "Skillera", ontoRoot: newRoot)
+
+        let after = try #require(store.projects.first)
+        let outsider = try #require(after.services.first { $0.name == "outsider" })
+        #expect(outsider.directory == "/opt/elsewhere/outsider")
+    }
+
+    @Test func rebaseProjectThrowsWhenMissing() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        #expect(throws: StoreError.self) {
+            try store.rebaseProject(id: "non-esiste", ontoRoot: URL(fileURLWithPath: "/tmp"))
+        }
+    }
+
+    // MARK: - updateInfraCheck
+
+    @Test func updateInfraCheckSetsAndPersists() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let newCheck = StoredInfraCheck(label: "Redis", port: 6379)
+        try store.updateInfraCheck(projectID: "Skillera", infraCheck: newCheck)
+
+        #expect(store.projects.first?.infraCheck == newCheck)
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.infraCheck == newCheck)
+    }
+
+    @Test func updateInfraCheckRemovesWithNil() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        try store.updateInfraCheck(projectID: "Skillera", infraCheck: nil)
+
+        #expect(store.projects.first?.infraCheck == nil)
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.infraCheck == nil)
+    }
+
+    @Test func updateInfraCheckThrowsWhenProjectMissing() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        #expect(throws: StoreError.self) {
+            try store.updateInfraCheck(projectID: "non-esiste", infraCheck: nil)
+        }
+    }
+
+    // MARK: - updateProfiles
+
+    @Test func updateProfilesSetsAndPersists() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let newProfiles = [
+            StoredProfile(name: "Solo gateway", serviceNames: ["gateway"]),
+            StoredProfile(name: "Tutti", serviceNames: ["gateway", "atlas"]),
+        ]
+        try store.updateProfiles(projectID: "Skillera", profiles: newProfiles)
+
+        #expect(store.projects.first?.profiles == newProfiles)
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.profiles == newProfiles)
+    }
+
+    @Test func updateProfilesRejectsUnknownService() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let badProfiles = [StoredProfile(name: "Bad", serviceNames: ["nonexistent-service"])]
+        #expect(throws: StoreError.self) {
+            try store.updateProfiles(projectID: "Skillera", profiles: badProfiles)
+        }
+        // invariato
+        #expect(store.projects.first?.profiles.contains { $0.name == "Bad" } == false)
+    }
+
+    @Test func updateProfilesRejectsDuplicateProfileNameCaseInsensitive() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let dupProfiles = [
+            StoredProfile(name: "Tutti", serviceNames: ["gateway"]),
+            StoredProfile(name: "tutti", serviceNames: ["atlas"]),
+        ]
+        #expect(throws: StoreError.self) {
+            try store.updateProfiles(projectID: "Skillera", profiles: dupProfiles)
+        }
+    }
+
+    @Test func updateProfilesThrowsWhenProjectMissing() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        #expect(throws: StoreError.self) {
+            try store.updateProfiles(projectID: "non-esiste", profiles: [])
+        }
+    }
+
     @Test func importWithOverrideNameSucceeds() throws {
         let url = tempStoreURL()
         let store = ServiceStore(fileURL: url)

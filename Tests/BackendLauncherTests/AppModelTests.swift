@@ -239,6 +239,80 @@ import Testing
         #expect(eventuallyDead)
     }
 
+    @Test func startProjectStartsOnlyThatProjectsServices() async throws {
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        model.startProject(named: "ProjA")
+
+        let aUp = await waitUntil { model.services.first { $0.id == "ProjA/svc" }?.processAlive == true }
+        #expect(aUp)
+        #expect(model.services.first { $0.id == "ProjB/svc" }?.processAlive == false)
+
+        model.stopAll()
+        _ = await waitUntil { !model.anyRunning }
+    }
+
+    @Test func startProjectSkipsAlreadyRunningServices() async throws {
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        let running = try #require(model.services.first { $0.id == "ProjA/svc" })
+        running.start()
+        _ = await waitUntil { running.processAlive }
+        let firstPID = running.processID
+
+        model.startProject(named: "ProjA")
+        // Non deve essere riavviato (stesso PID).
+        #expect(running.processID == firstPID)
+
+        model.stopAll()
+        _ = await waitUntil { !model.anyRunning }
+    }
+
+    @Test func stopProjectStopsOnlyThatProjectsServices() async throws {
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        model.startAll()
+        _ = await waitUntil { model.services.allSatisfy { $0.processAlive } }
+
+        model.stopProject(named: "ProjA")
+        let aDown = await waitUntil { model.services.first { $0.id == "ProjA/svc" }?.processAlive == false }
+        #expect(aDown)
+        #expect(model.services.first { $0.id == "ProjB/svc" }?.processAlive == true)
+
+        model.stopAll()
+        _ = await waitUntil { !model.anyRunning }
+    }
+
+    @Test func renameProjectViaStoreStopsRunningServiceOnReload() async throws {
+        // Documenta ed esercita la semantica ATTESA (non una sorpresa): renameProject cambia
+        // StoredProject.id (== name), quindi gli id namespaced dei suoi servizi cambiano
+        // ("ProjA/svc" -> "ProjANovo/svc"). Per reloadFromStore() questo è indistinguibile da
+        // "rimuovi il vecchio id, aggiungi il nuovo": un servizio in esecuzione al momento del
+        // rename viene FERMATO silenziosamente al reload, esattamente come un update di
+        // rinomina servizio. Comportamento accettato e documentato, testato qui esplicitamente.
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        let running = try #require(model.services.first { $0.id == "ProjA/svc" })
+        running.start()
+        _ = await waitUntil { running.processAlive }
+
+        try store.renameProject(id: "ProjA", to: "ProjANovo")
+        model.reloadFromStore()
+
+        // Vecchi id spariti.
+        #expect(!model.services.contains { $0.id == "ProjA/svc" })
+        // Nuovi id presenti.
+        #expect(model.services.contains { $0.id == "ProjANovo/svc" })
+        // Il vecchio controller in esecuzione è stato fermato (rename == remove+add).
+        let eventuallyDead = await waitUntil { !running.processAlive }
+        #expect(eventuallyDead)
+        // ProjB, non toccato dal rename, resta invariato.
+        #expect(model.services.contains { $0.id == "ProjB/svc" })
+
+        model.stopAll()
+        _ = await waitUntil { !model.anyRunning }
+    }
+
     @Test func reloadPrunesExpandedServices() throws {
         let store = try makeTwoProjectStore()
         let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)

@@ -211,6 +211,24 @@ final class AppModel {
         }
     }
 
+    /// Avvia tutti i servizi non ancora vivi di UN progetto specifico (match su
+    /// `config.projectName`, non sul nome breve del servizio). Stessa guardia NATS di
+    /// `startAll()`: avvisa (se l'infra check non è su) ma procede comunque.
+    func startProject(named projectName: String) {
+        if !natsUp && infraCheck != nil { showNATSWarning = true }
+        for service in services
+        where service.config.projectName == projectName && !service.processAlive {
+            service.start()
+        }
+    }
+
+    /// Ferma tutti i servizi vivi di UN progetto specifico (match su `config.projectName`).
+    func stopProject(named projectName: String) {
+        for service in services where service.config.projectName == projectName {
+            service.stop()
+        }
+    }
+
     /// Stop di tutto con attesa (max ~6s: grace 5s di killpg + margine). Per il quit.
     func shutdownForQuit() async {
         stopAll()
