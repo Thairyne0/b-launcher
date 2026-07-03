@@ -51,4 +51,169 @@ import Testing
         store.clear()
         #expect(store.lines.isEmpty)
     }
+
+    // MARK: - classify
+
+    @Test func classifyNestErrorToken() {
+        #expect(LogStore.classify("[Nest] 12345  - 03/07/2026, 14:23:45     ERROR [SomeContext] boom") == .error)
+    }
+
+    @Test func classifyNestFatalToken() {
+        #expect(LogStore.classify("[Nest] 12345  - 03/07/2026, 14:23:45     FATAL [SomeContext] boom") == .error)
+    }
+
+    @Test func classifyNestWarnToken() {
+        #expect(LogStore.classify("[Nest] 12345  - 03/07/2026, 14:23:45     WARN [SomeContext] careful") == .warning)
+    }
+
+    @Test func classifyNestDebugToken() {
+        #expect(LogStore.classify("[Nest] 12345  - 03/07/2026, 14:23:45     DEBUG [SomeContext] detail") == .debug)
+    }
+
+    @Test func classifyNestVerboseToken() {
+        #expect(LogStore.classify("[Nest] 12345  - 03/07/2026, 14:23:45     VERBOSE [SomeContext] chatter") == .debug)
+    }
+
+    @Test func classifyNestLogTokenIsNormal() {
+        #expect(LogStore.classify("[Nest] 12345  - 03/07/2026, 14:23:45     LOG [SomeContext] all good") == .normal)
+    }
+
+    @Test func classifyNpmErrBang() {
+        #expect(LogStore.classify("npm ERR! code ELIFECYCLE") == .error)
+    }
+
+    @Test func classifyLauncherLineMentioningErroreIsNormal() {
+        #expect(LogStore.classify("[launcher] c'è stato un errore ma è solo testo") == .normal)
+    }
+
+    @Test func classifyPlainLineIsNormal() {
+        #expect(LogStore.classify("just some plain output") == .normal)
+    }
+
+    // MARK: - errorCount
+
+    @Test func errorCountIncrementsOnErrorLines() {
+        let store = LogStore()
+        store.ingest("[Nest] 1  - now     LOG [X] fine\n")
+        store.ingest("[Nest] 1  - now     ERROR [X] boom\n")
+        store.ingest("npm ERR! failed\n")
+        #expect(store.errorCount == 2)
+    }
+
+    @Test func errorCountResetsOnClear() {
+        let store = LogStore()
+        store.ingest("npm ERR! failed\n")
+        #expect(store.errorCount == 1)
+        store.clear()
+        #expect(store.errorCount == 0)
+    }
+
+    @Test func errorCountResetsOnLauncherStartBanner() {
+        let store = LogStore()
+        store.ingest("npm ERR! failed\n")
+        #expect(store.errorCount == 1)
+        store.ingest("[launcher] ── avvio ──\n")
+        #expect(store.errorCount == 0)
+    }
+
+    @Test func resetErrorCountClearsCounter() {
+        let store = LogStore()
+        store.ingest("npm ERR! failed\n")
+        #expect(store.errorCount == 1)
+        store.resetErrorCount()
+        #expect(store.errorCount == 0)
+    }
+
+    // MARK: - levelFilter
+
+    @Test func levelFilterErrorsOnlyShowsErrors() {
+        let store = LogStore()
+        store.ingest("[Nest] 1  - now     LOG [X] fine\n")
+        store.ingest("[Nest] 1  - now     WARN [X] careful\n")
+        store.ingest("[Nest] 1  - now     ERROR [X] boom\n")
+        store.levelFilter = .errors
+        #expect(store.visibleLines.map(\.text) == ["[Nest] 1  - now     ERROR [X] boom"])
+    }
+
+    @Test func levelFilterWarnPlusShowsWarningsAndErrors() {
+        let store = LogStore()
+        store.ingest("[Nest] 1  - now     LOG [X] fine\n")
+        store.ingest("[Nest] 1  - now     WARN [X] careful\n")
+        store.ingest("[Nest] 1  - now     ERROR [X] boom\n")
+        store.levelFilter = .warnPlus
+        #expect(store.visibleLines.map(\.text) == [
+            "[Nest] 1  - now     WARN [X] careful",
+            "[Nest] 1  - now     ERROR [X] boom",
+        ])
+    }
+
+    @Test func levelFilterAllShowsEverything() {
+        let store = LogStore()
+        store.ingest("[Nest] 1  - now     LOG [X] fine\n")
+        store.ingest("[Nest] 1  - now     WARN [X] careful\n")
+        store.levelFilter = .all
+        #expect(store.visibleLines.count == 2)
+    }
+
+    @Test func levelFilterCombinesWithSearchText() {
+        let store = LogStore()
+        store.ingest("[Nest] 1  - now     WARN [X] careful boom\n")
+        store.ingest("[Nest] 1  - now     WARN [X] careful other\n")
+        store.ingest("[Nest] 1  - now     ERROR [X] boom\n")
+        store.levelFilter = .warnPlus
+        store.searchText = "boom"
+        #expect(store.visibleLines.map(\.text) == [
+            "[Nest] 1  - now     WARN [X] careful boom",
+            "[Nest] 1  - now     ERROR [X] boom",
+        ])
+    }
+
+    // MARK: - errorBlock
+
+    @Test func errorBlockCapturesFollowingStackLines() {
+        let store = LogStore()
+        store.ingest("[Nest] 1  - now     ERROR [X] boom\n")
+        store.ingest("    at someFunction (file.js:10:5)\n")
+        store.ingest("    at anotherFunction (file.js:20:5)\n")
+        store.ingest("[Nest] 1  - now     LOG [X] recovered\n")
+        let block = LogStore.errorBlock(startingAt: 0, in: store.lines)
+        #expect(block == """
+        [Nest] 1  - now     ERROR [X] boom
+            at someFunction (file.js:10:5)
+            at anotherFunction (file.js:20:5)
+        """)
+    }
+
+    @Test func errorBlockAtEndOfBufferIsSingleLine() {
+        let store = LogStore()
+        store.ingest("[Nest] 1  - now     LOG [X] fine\n")
+        store.ingest("[Nest] 1  - now     ERROR [X] boom\n")
+        let block = LogStore.errorBlock(startingAt: 1, in: store.lines)
+        #expect(block == "[Nest] 1  - now     ERROR [X] boom")
+    }
+
+    @Test func errorBlockStopsAtNonStackNormalLine() {
+        let store = LogStore()
+        store.ingest("npm ERR! failed\n")
+        store.ingest("at something.js:1:1\n")
+        store.ingest("not indented and not at-prefixed\n")
+        store.ingest("    still indented but after break\n")
+        let block = LogStore.errorBlock(startingAt: 0, in: store.lines)
+        #expect(block == """
+        npm ERR! failed
+        at something.js:1:1
+        """)
+    }
+
+    @Test func errorBlockStopsAtSubsequentErrorOrWarningLine() {
+        let store = LogStore()
+        store.ingest("npm ERR! failed\n")
+        store.ingest("    at something.js:1:1\n")
+        store.ingest("[Nest] 1  - now     WARN [X] careful\n")
+        let block = LogStore.errorBlock(startingAt: 0, in: store.lines)
+        #expect(block == """
+        npm ERR! failed
+            at something.js:1:1
+        """)
+    }
 }

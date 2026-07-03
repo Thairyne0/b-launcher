@@ -11,8 +11,20 @@ struct ServiceCardView: View {
                 StatusDot(status: controller.status)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(controller.config.displayName)
-                        .font(.headline)
+                    HStack(spacing: 6) {
+                        Text(controller.config.displayName)
+                            .font(.headline)
+
+                        if controller.logs.errorCount > 0 {
+                            Text("\(controller.logs.errorCount)")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(Color.red.opacity(0.85), in: .capsule)
+                                .foregroundStyle(.white)
+                                .help("Errori nei log di questa esecuzione")
+                        }
+                    }
                     HStack(spacing: 4) {
                         Text(controller.config.port.map { "porta \(String($0))" } ?? "via NATS")
                         Text("·")
