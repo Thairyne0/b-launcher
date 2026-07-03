@@ -124,6 +124,20 @@ struct BackendLauncherApp: App {
             CommandGroup(replacing: .help) {
                 HelpCommand()
             }
+
+            // Sostituisce la voce di default "Informazioni su <App>" del menu app con una che
+            // apre la nostra `Window(id: "about")` — stesso pattern-wrapper di `HelpCommand`.
+            CommandGroup(replacing: .appInfo) {
+                AboutCommand()
+            }
+
+            CommandGroup(after: .toolbar) {
+                Divider()
+                Button("Apri palette comandi") {
+                    PaletteState.shared.isPresented = true
+                }
+                .keyboardShortcut("k", modifiers: .command)
+            }
         }
 
         MenuBarExtra {
@@ -140,6 +154,12 @@ struct BackendLauncherApp: App {
             HelpView()
         }
         .defaultSize(width: 780, height: 560)
+
+        Window("Informazioni su Backend Launcher", id: "about") {
+            AboutView()
+        }
+        .defaultSize(width: 360, height: 420)
+        .windowResizability(.contentSize)
     }
 }
 
@@ -154,6 +174,19 @@ private struct HelpCommand: View {
             openWindow(id: "help")
         }
         .keyboardShortcut("?", modifiers: .command)
+    }
+}
+
+/// Voce di menu "Informazioni su Backend Launcher" (sostituisce la voce standard del menu app):
+/// apre la finestra `id: "about"`. Stesso motivo-wrapper di `HelpCommand`: `CommandGroup` non
+/// ha accesso a `@Environment(\.openWindow)`, solo le View lo hanno.
+private struct AboutCommand: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Informazioni su Backend Launcher") {
+            openWindow(id: "about")
+        }
     }
 }
 

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Bindable var model: AppModel
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openWindow) private var openWindow
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("sidebarSelection") private var selectionRaw = "grid"
     @State private var contentWidth: CGFloat = 1200
@@ -16,6 +17,11 @@ struct ContentView: View {
     /// (`emptyProjectView`) — pilota una sheet di competenza di questa vista, indipendente da
     /// quella (analoga) ospitata da `SidebarView` per il resto dei flussi add/edit.
     @State private var addingServiceToProjectID: String?
+    /// `true` finché l'utente non ha mai chiuso la sheet di benvenuto — persistito così la
+    /// sheet appare una volta sola nella vita dell'installazione, non a ogni avvio dell'app.
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @State private var showWelcomeSheet = false
+    @State private var paletteState = PaletteState.shared
 
     private var gridColumns: [GridItem] {
         contentWidth < 860
@@ -34,6 +40,25 @@ struct ContentView: View {
             detailContent
         }
         .overlay(alignment: .bottom) { ToastOverlay() }
+        .overlay {
+            if paletteState.isPresented {
+                CommandPaletteView(
+                    items: paletteItems,
+                    onSelect: handlePaletteSelection,
+                    onDismiss: { paletteState.isPresented = false }
+                )
+            }
+        }
+        .onAppear {
+            if !hasSeenWelcome {
+                showWelcomeSheet = true
+            }
+        }
+        .sheet(isPresented: $showWelcomeSheet, onDismiss: { hasSeenWelcome = true }) {
+            WelcomeView {
+                showWelcomeSheet = false
+            }
+        }
         .alert("NATS non raggiungibile", isPresented: $model.showNATSWarning) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -144,6 +169,7 @@ struct ContentView: View {
                             model.toggleAllTerminals()
                         }
                     }
+                    .help(model.allExpanded ? "Comprimi tutti (⌘E)" : "Espandi tutti (⌘E)")
                 }
                 profilesMenu
                 Button("Avvia tutti", systemImage: "play.fill") {
@@ -152,6 +178,7 @@ struct ContentView: View {
                     ToastCenter.shared.show("Avvio di \(startingCount) servizi…", systemImage: "play.circle.fill")
                 }
                     .disabled(model.services.allSatisfy { $0.processAlive })
+                    .help("Avvia tutti (⌘⇧A)")
                 Button("Riavvia", systemImage: "arrow.clockwise") {
                     if case .project(let id) = currentSelection {
                         model.restartProject(named: id)
@@ -161,8 +188,10 @@ struct ContentView: View {
                     ToastCenter.shared.show("Riavvio in corso", systemImage: "arrow.clockwise")
                 }
                 .disabled(!model.anyRunning)
+                .help("Riavvia (⌘⇧R)")
                 Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
                     .disabled(!model.anyRunning)
+                    .help("Ferma tutti (⌘⇧S)")
                 if case .project(let id) = currentSelection {
                     Button("Pulisci terminali", systemImage: "clear") {
                         model.clearProjectTerminals(named: id)
@@ -292,6 +321,113 @@ struct ContentView: View {
         .padding(.top, 20)
     }
 
+    // MARK: - Palette comandi (⌘K)
+
+    /// Prefissi degli `id` di `PaletteItem` usati per instradare la selezione in
+    /// `handlePaletteSelection`: la palette stessa (`CommandPaletteView`) non conosce il
+    /// significato degli id, solo `ContentView` (che ha accesso al model) sa cosa eseguire.
+    private enum PaletteIDs {
+        static let goToGrid = "goto:grid"
+        static let goToFocus = "goto:focus"
+        static let openHelp = "action:open-help"
+        static let startAll = "action:start-all"
+        static let stopAll = "action:stop-all"
+        static let restartAll = "action:restart-all"
+        static let toggleTerminals = "action:toggle-terminals"
+        static let serviceGoto = "goto:service:"
+        static let serviceRestart = "action:restart-service:"
+        static let projectStart = "action:start-project:"
+    }
+
+    /// Elenco degli item della palette, ricostruito a ogni apertura (`CommandPaletteView` lo
+    /// riceve come snapshot): navigazione verso griglia/Focus/singolo servizio, riavvio dei
+    /// singoli servizi attivi, azioni globali (avvia/ferma/riavvia tutti, espandi/comprimi
+    /// terminali), apri Aiuto, e avvio rapido per progetto. Le Impostazioni sono
+    /// intenzionalmente escluse: `SettingsLink` non è invocabile in modo programmatico da qui.
+    private var paletteItems: [PaletteItem] {
+        var items: [PaletteItem] = [
+            PaletteItem(id: PaletteIDs.goToGrid, title: "Vai a Griglia", subtitle: nil, systemImage: "square.grid.2x2"),
+            PaletteItem(id: PaletteIDs.goToFocus, title: "Vai a Focus", subtitle: nil, systemImage: "rectangle.on.rectangle"),
+        ]
+
+        for controller in model.services {
+            items.append(PaletteItem(
+                id: PaletteIDs.serviceGoto + controller.id,
+                title: "Vai a \(controller.config.displayName)",
+                subtitle: controller.config.projectName.isEmpty ? nil : controller.config.projectName,
+                systemImage: controller.config.symbolName ?? "server.rack"
+            ))
+            if controller.processAlive {
+                items.append(PaletteItem(
+                    id: PaletteIDs.serviceRestart + controller.id,
+                    title: "Riavvia \(controller.config.displayName)",
+                    subtitle: controller.config.projectName.isEmpty ? nil : controller.config.projectName,
+                    systemImage: "arrow.clockwise"
+                ))
+            }
+        }
+
+        items.append(contentsOf: [
+            PaletteItem(id: PaletteIDs.startAll, title: "Avvia tutti", subtitle: nil, systemImage: "play.fill"),
+            PaletteItem(id: PaletteIDs.stopAll, title: "Ferma tutti", subtitle: nil, systemImage: "stop.fill"),
+            PaletteItem(id: PaletteIDs.restartAll, title: "Riavvia tutti", subtitle: nil, systemImage: "arrow.clockwise"),
+            PaletteItem(id: PaletteIDs.toggleTerminals, title: "Espandi/comprimi tutti i terminali", subtitle: nil, systemImage: "rectangle.expand.vertical"),
+            PaletteItem(id: PaletteIDs.openHelp, title: "Apri Aiuto", subtitle: nil, systemImage: "questionmark.circle"),
+        ])
+
+        if let projects = model.store?.projects {
+            for project in projects {
+                items.append(PaletteItem(
+                    id: PaletteIDs.projectStart + project.id,
+                    title: "Avvia progetto \(project.name)",
+                    subtitle: nil,
+                    systemImage: "folder"
+                ))
+            }
+        }
+
+        return items
+    }
+
+    /// Esegue l'azione codificata nell'id dell'item selezionato dalla palette. La navigazione
+    /// (`goto:*`) aggiorna `selectionRaw` come farebbe un click in sidebar; le azioni globali
+    /// richiamano gli stessi metodi di `AppModel` usati dalla toolbar, con lo stesso toast di
+    /// conferma dove la toolbar già lo mostra.
+    private func handlePaletteSelection(_ item: PaletteItem) {
+        switch item.id {
+        case PaletteIDs.goToGrid:
+            selectionRaw = SidebarSelectionCoding.encode(.grid)
+        case PaletteIDs.goToFocus:
+            selectionRaw = SidebarSelectionCoding.encode(.focus)
+        case PaletteIDs.openHelp:
+            openWindow(id: "help")
+        case PaletteIDs.startAll:
+            let startingCount = model.services.filter { !$0.processAlive }.count
+            model.startAll()
+            ToastCenter.shared.show("Avvio di \(startingCount) servizi…", systemImage: "play.circle.fill")
+        case PaletteIDs.stopAll:
+            model.stopAllRequested = true
+        case PaletteIDs.restartAll:
+            model.restartAll()
+            ToastCenter.shared.show("Riavvio in corso", systemImage: "arrow.clockwise")
+        case PaletteIDs.toggleTerminals:
+            withAnimation(.snappy) { model.toggleAllTerminals() }
+        default:
+            if let id = item.id.dropPrefix(PaletteIDs.serviceGoto) {
+                selectionRaw = SidebarSelectionCoding.encode(.service(id))
+            } else if let id = item.id.dropPrefix(PaletteIDs.serviceRestart) {
+                if let controller = model.services.first(where: { $0.id == id }) {
+                    controller.restart()
+                    ToastCenter.shared.show("Riavvio \(controller.config.displayName)", systemImage: "arrow.clockwise")
+                }
+            } else if let id = item.id.dropPrefix(PaletteIDs.projectStart) {
+                model.startProject(named: id)
+                let projectName = model.store?.projects.first(where: { $0.id == id })?.name ?? id
+                ToastCenter.shared.show("Avvio progetto \(projectName)", systemImage: "play.circle.fill")
+            }
+        }
+    }
+
     /// Esito del `.fileImporter` del banner "cartelle mancanti": ribasa il progetto scelto
     /// sulla nuova root. Stessa semantica del rebase nel menu contestuale della sidebar
     /// (`SidebarView.handleRebasePick`), duplicata qui perché il banner vive nel dettaglio e
@@ -320,4 +456,15 @@ struct ContentView: View {
 /// al file e questa sheet è di competenza esclusiva di `ContentView` (stato vuoto progetto).
 private struct EmptyProjectSheetTarget: Identifiable {
     let id: String
+}
+
+private extension String {
+    /// `nil` se `self` non inizia per `prefix`, altrimenti il resto della stringa dopo il
+    /// prefisso — usato per decodificare gli id "namespaced" della palette comandi
+    /// (`ContentView.PaletteIDs`) senza dover ricorrere a `dropFirst(prefix.count)` "a occhio"
+    /// in ogni call site.
+    func dropPrefix(_ prefix: String) -> String? {
+        guard hasPrefix(prefix) else { return nil }
+        return String(dropFirst(prefix.count))
+    }
 }

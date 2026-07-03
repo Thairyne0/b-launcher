@@ -487,6 +487,7 @@ struct SidebarView: View {
                     .foregroundStyle(.white)
                     .contentTransition(.numericText())
                     .animation(.snappy, value: controller.logs.errorCount)
+                    .accessibilityLabel("\(controller.logs.errorCount) errori nei log")
             }
         }
         .contextMenu {

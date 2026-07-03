@@ -67,12 +67,17 @@ struct StatusDot: View {
                        value: pulse)
             .onAppear { pulse = status.isPulsing }
             .onChange(of: status.isPulsing) { _, pulsing in pulse = pulsing }
+            .accessibilityLabel("Stato: \(status.label)")
     }
 }
 
 /// Pillola compatta per metriche (uptime, CPU/RAM) condivisa tra dashboard e Focus.
+/// `accessibilityLabel`, se non vuota, sostituisce la lettura VoiceOver di default (che
+/// altrimenti leggerebbe solo le cifre di `content`, es. "12:34", senza dire a cosa si
+/// riferiscono) — default "" per compatibilità con i chiamanti esistenti che non lo passano.
 struct MetricPill<Content: View>: View {
     let icon: String
+    var accessibilityLabel: String = ""
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -87,6 +92,23 @@ struct MetricPill<Content: View>: View {
         .padding(.vertical, 3)
         .background(.quaternary.opacity(0.5), in: .capsule)
         .foregroundStyle(.secondary)
+        .modifier(OptionalAccessibilityLabel(label: accessibilityLabel))
+    }
+}
+
+/// Applica `.accessibilityLabel` solo se `label` non è vuota — vive come `ViewModifier`
+/// separato invece di un `if/else` inline perché i due rami di un `if` su una `View` con
+/// `@ViewBuilder` avrebbero tipi opachi diversi (`.accessibilityLabel` vs identità), cosa che
+/// `ViewModifier` evita restituendo sempre lo stesso tipo concreto.
+private struct OptionalAccessibilityLabel: ViewModifier {
+    let label: String
+
+    func body(content: Content) -> some View {
+        if label.isEmpty {
+            content
+        } else {
+            content.accessibilityLabel(label)
+        }
     }
 }
 
@@ -108,5 +130,7 @@ struct NATSIndicator: View {
         .fixedSize()
         .help(up ? "NATS raggiungibile su localhost:4222"
                  : "NATS NON raggiungibile (localhost:4222) — i backend non comunicano")
+        .accessibilityLabel(up ? "NATS raggiungibile su localhost 4222"
+                               : "NATS non raggiungibile su localhost 4222, i backend non comunicano")
     }
 }

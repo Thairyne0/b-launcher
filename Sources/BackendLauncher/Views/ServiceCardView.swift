@@ -58,6 +58,7 @@ struct ServiceCardView: View {
                             }
                             .buttonStyle(.plain)
                             .help("Mostra gli errori nel terminale")
+                            .accessibilityLabel("\(controller.logs.errorCount) errori nei log")
                         }
                     }
                     HStack(spacing: 4) {
@@ -91,14 +92,15 @@ struct ServiceCardView: View {
                 Spacer()
 
                 if let startedAt = controller.startedAt {
-                    MetricPill(icon: "clock") {
+                    MetricPill(icon: "clock", accessibilityLabel: "Uptime: in esecuzione da \(startedAt.formatted(date: .omitted, time: .standard))") {
                         Text(startedAt, style: .timer)
                             .monospacedDigit()
                     }
                 }
 
                 if let stats = controller.stats, controller.processAlive {
-                    MetricPill(icon: "gauge.with.dots.needle.33percent") {
+                    MetricPill(icon: "gauge.with.dots.needle.33percent",
+                               accessibilityLabel: "CPU e memoria: \(Int(stats.cpuPercent)) per cento, \(Int(stats.rssMB)) megabyte") {
                         Text("\(stats.cpuPercent, specifier: "%.0f")% · \(stats.rssMB, specifier: "%.0f") MB")
                             .monospacedDigit()
                             .contentTransition(.numericText())
