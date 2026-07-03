@@ -8,22 +8,51 @@ import UserNotifications
 enum CrashNotifier {
     private static var authRequested = false
 
+    /// Delegate condiviso: gestisce il tap sulla notifica (deep-link) e la presentazione
+    /// anche ad app in primo piano. Assegnato al UNUserNotificationCenter solo quando
+    /// `isAvailable`, in requestAuthorizationIfNeeded.
+    static let delegate = NotificationDelegate()
+
+    /// Impostato dall'AppDelegate: riceve il nome (config.name) del servizio la cui
+    /// notifica di crash è stata toccata dall'utente.
+    static var onNotificationTap: ((String) -> Void)?
+
     static var isAvailable: Bool { Bundle.main.bundleIdentifier != nil }
 
     static func requestAuthorizationIfNeeded() {
         guard isAvailable, !authRequested else { return }
         authRequested = true
+        UNUserNotificationCenter.current().delegate = Self.delegate
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    static func notifyCrash(service: String, exitCode: Int32) {
+    /// `service` è il nome visualizzato (usato nel titolo); `serviceID` è config.name,
+    /// portato nello userInfo per il deep-link al tap (AppModel.revealService lavora per nome breve).
+    static func notifyCrash(service: String, serviceID: String, exitCode: Int32) {
         guard isAvailable else { return }
         let content = UNMutableNotificationContent()
         content.title = "\(service) è crashato"
         content.body = "Exit code \(exitCode). Riavvialo dal launcher."
         content.sound = .default
+        content.userInfo = ["service": serviceID]
         let request = UNNotificationRequest(identifier: UUID().uuidString,
                                             content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+}
+
+/// Riceve gli eventi dello UNUserNotificationCenter: tap (deep-link) e presentazione
+/// mentre l'app è in primo piano.
+final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse) async {
+        if let service = response.notification.request.content.userInfo["service"] as? String {
+            await MainActor.run { CrashNotifier.onNotificationTap?(service) }
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]  // mostra anche con app in primo piano
     }
 }

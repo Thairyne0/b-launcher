@@ -101,6 +101,9 @@ struct ContentView: View {
             } message: {
                 Text("Tutti i processi verranno terminati.")
             }
+            // Deep-link da notifica di crash: torna sempre alla dashboard per mostrare
+            // il terminale appena espanso da AppModel.revealService.
+            .onChange(of: model.revealRequestCount) { _, _ in page = .dashboard }
         }
         .frame(minWidth: 520, minHeight: 480)
     }

@@ -9,6 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         CrashNotifier.requestAuthorizationIfNeeded()
+        CrashNotifier.onNotificationTap = { [weak self] serviceID in
+            NSApp.activate(ignoringOtherApps: true)
+            self?.model?.revealService(named: serviceID)
+        }
     }
 
     // Con la menu bar extra sempre presente, chiudere la finestra non deve terminare

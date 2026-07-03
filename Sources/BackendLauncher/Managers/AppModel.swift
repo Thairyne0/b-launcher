@@ -10,6 +10,9 @@ final class AppModel {
     var showNATSWarning = false
     var stopAllRequested = false
     var expandedServices: Set<String> = []
+    /// Incrementato a ogni `revealService`: la view lo osserva per riportare la pagina
+    /// attiva su "Backend" quando l'utente tocca una notifica di crash.
+    private(set) var revealRequestCount = 0
 
     private var pollTask: Task<Void, Never>?
 
@@ -18,11 +21,26 @@ final class AppModel {
          cwd: String? = nil,
          pollingEnabled: Bool = true,
          crashNotificationsEnabled: Bool = true) {
-        let onCrash: ((String, Int32) -> Void)? = crashNotificationsEnabled
-            ? { name, code in CrashNotifier.notifyCrash(service: name, exitCode: code) }
-            : nil
-        services = configs.map { ServiceController(config: $0, cwd: cwd, onCrash: onCrash) }
+        services = configs.map { config in
+            // onCrash riceve (nome visualizzato, exit code) da ServiceController; il nome
+            // breve (config.name) per lo userInfo/deep-link è catturato qui dalla config.
+            let onCrash: ((String, Int32) -> Void)? = crashNotificationsEnabled
+                ? { displayName, code in
+                    CrashNotifier.notifyCrash(service: displayName, serviceID: config.name, exitCode: code)
+                }
+                : nil
+            return ServiceController(config: config, cwd: cwd, onCrash: onCrash)
+        }
         if pollingEnabled { startPolling() }
+    }
+
+    /// Porta l'attenzione su un servizio: espande il suo terminale e filtra sugli errori.
+    /// Usato dal deep-link della notifica di crash (match su config.name).
+    func revealService(named name: String) {
+        guard let service = services.first(where: { $0.config.name == name }) else { return }
+        expandedServices.insert(service.id)
+        service.logs.levelFilter = .errors
+        revealRequestCount += 1
     }
 
     var anyRunning: Bool { services.contains { $0.processAlive } }

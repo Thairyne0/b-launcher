@@ -33,14 +33,31 @@ final class ServiceController: Identifiable {
     private var epoch = 0
     private let cwdOverride: String?
     private let onCrash: ((String, Int32) -> Void)?
+    private let fileWriter: LogFileWriter
+
+    /// Directory di default per i log di test: mai la vera ~/Library/Logs, per non
+    /// inquinarla con gli innumerevoli ServiceController "fake" creati dalla test suite.
+    private static let testLogDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("blauncher-tests")
 
     /// `cwd` iniettabile solo per i test; in produzione usa config.workingDirectory.
     /// `onCrash` notifica (nome visualizzato, exit code) quando il processo muore
     /// senza che sia stato l'utente a fermarlo né parte di un restart.
-    init(config: ServiceConfig, cwd: String? = nil, onCrash: ((String, Int32) -> Void)? = nil) {
+    /// `logDirectory` iniettabile per i test; in produzione (nil) usa la directory di
+    /// default di LogFileWriter. Se `cwd` è impostato (solo nei test) e `logDirectory`
+    /// non è specificato esplicitamente, i log di file vanno comunque in una directory
+    /// temporanea dedicata invece che nella vera ~/Library/Logs/BackendLauncher.
+    init(config: ServiceConfig, cwd: String? = nil, logDirectory: URL? = nil,
+         onCrash: ((String, Int32) -> Void)? = nil) {
         self.config = config
         self.cwdOverride = cwd
         self.onCrash = onCrash
+        let resolvedLogDirectory = logDirectory ?? (cwd != nil ? Self.testLogDirectory : nil)
+        if let resolvedLogDirectory {
+            self.fileWriter = LogFileWriter(serviceName: config.name, directory: resolvedLogDirectory)
+        } else {
+            self.fileWriter = LogFileWriter(serviceName: config.name)
+        }
     }
 
     deinit {
@@ -69,6 +86,7 @@ final class ServiceController: Identifiable {
         lastExitCode = nil
         readyMarkerSeen = false
         logs.ingest("[launcher] ── avvio \(config.displayName) (\(config.command)) ──\n")
+        fileWriter.appendBanner("avvio \(config.displayName) — \(Date().formatted())")
         epoch += 1
         let myEpoch = epoch
         do {
@@ -82,6 +100,7 @@ final class ServiceController: Identifiable {
                         self.readyMarkerSeen = true
                     }
                     self.logs.ingest(chunk)
+                    self.fileWriter.append(chunk)
                 },
                 onExit: { [weak self] code in
                     guard let self, self.epoch == myEpoch else { return }
@@ -150,6 +169,7 @@ final class ServiceController: Identifiable {
         lastCPUSeconds = nil
         logs.flushPartial()
         logs.ingest("[launcher] ── processo terminato (exit \(code)) ──\n")
+        fileWriter.appendBanner("processo terminato (exit \(code))")
         if isCrash {
             onCrash?(config.displayName, code)
         }

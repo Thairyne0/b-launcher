@@ -86,4 +86,15 @@ import Testing
         model.toggleTerminal(id)
         #expect(!model.expandedServices.contains(id))
     }
+
+    @Test func revealServiceExpandsAndFiltersErrors() {
+        let model = AppModel(configs: fakeConfigs, cwd: "/tmp", pollingEnabled: false)
+        model.revealService(named: "a")
+        #expect(model.expandedServices.contains("a"))
+        #expect(model.services[0].logs.levelFilter == .errors)
+        #expect(model.revealRequestCount == 1)
+
+        model.revealService(named: "does-not-exist")
+        #expect(model.revealRequestCount == 1)  // invariato: nessun crash, nessuna modifica
+    }
 }
