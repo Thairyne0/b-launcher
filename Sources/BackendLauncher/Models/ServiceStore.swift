@@ -220,6 +220,16 @@ final class ServiceStore {
     /// Aggiorna (ed eventualmente rinomina) un servizio esistente. Se il nuovo nome
     /// differisce dal vecchio, la nuova unicità viene ri-verificata tra gli altri servizi
     /// del progetto (il servizio stesso è escluso dal controllo).
+    ///
+    /// ATTENZIONE — semantica del rename: lo store non ha alcuna nozione di "processo in
+    /// esecuzione" (quello vive in `ServiceController`/`AppModel`). Un rename si propaga a
+    /// `AppModel.reloadFromStore()` come id namespaced cambiato ("progetto/vecchioNome" →
+    /// "progetto/nuovoNome"), quindi **remove del controller vecchio + add di uno nuovo**, non
+    /// un update in-place. Se il servizio è in esecuzione al momento del rename, il processo
+    /// verrebbe fermato silenziosamente. La UI (`ServiceFormSheet`) impone questo fermando/
+    /// disabilitando la modifica mentre il servizio è vivo; qualunque altro chiamante
+    /// programmatico di `updateService` con un rename effettivo DEVE verificare da sé che il
+    /// servizio non sia in esecuzione prima di chiamare questo metodo.
     func updateService(named oldName: String, inProject id: String, with service: StoredService) throws {
         guard let projectIndex = projects.firstIndex(where: { $0.id == id }) else {
             throw StoreError.projectNotFound(id)
@@ -244,6 +254,35 @@ final class ServiceStore {
             $0.name.caseInsensitiveCompare(name) == .orderedSame
         }
         save()
+    }
+
+    // MARK: - Template export/import (Phase E)
+
+    /// Esporta un progetto come `ProjectTemplate` serializzato (JSON pretty-printed), con le
+    /// directory dei servizi rese relative a `root`. Lancia `.projectNotFound` se l'id non
+    /// corrisponde a nessun progetto.
+    func exportTemplate(projectID: String, root: URL) throws -> Data {
+        guard let project = projects.first(where: { $0.id == projectID }) else {
+            throw StoreError.projectNotFound(projectID)
+        }
+        let template = ProjectTemplateCodec.makeTemplate(from: project, root: root)
+        return try ProjectTemplateCodec.encode(template)
+    }
+
+    /// Importa un template: decodifica, ribasa le directory relative su `root`, ed effettua
+    /// l'append allo store con la stessa semantica di unicità di `addProject` (nome
+    /// case-insensitive univoco — su collisione la UI può richiamare con `nameOverride`).
+    /// Su successo, persiste e ritorna il progetto creato.
+    @discardableResult
+    func importTemplate(_ data: Data, root: URL, nameOverride: String? = nil) throws -> StoredProject {
+        let template = try ProjectTemplateCodec.decode(data)
+        let project = ProjectTemplateCodec.makeProject(from: template, root: root, nameOverride: nameOverride)
+        guard !projects.contains(where: { $0.name.caseInsensitiveCompare(project.name) == .orderedSame }) else {
+            throw StoreError.duplicateProjectName(project.name)
+        }
+        projects.append(project)
+        save()
+        return project
     }
 
     /// Scrittura atomica, JSON pretty-printed con chiavi ordinate per diff stabili.

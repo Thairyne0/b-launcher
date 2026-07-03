@@ -1,4 +1,29 @@
 import SwiftUI
+import UniformTypeIdentifiers
+
+/// `FileDocument` leggero che avvolge i bytes JSON già serializzati di un `ProjectTemplate` —
+/// usato solo per pilotare `.fileExporter`, nessuna logica propria (il contenuto è calcolato
+/// prima, da `ProjectTemplateCodec`/`ServiceStore.exportTemplate`).
+/// Estensione desiderata "`.blauncher.json`" ma UTType usa il generico `.json`: registrare uno
+/// UTType custom solo per la naming non vale la complessità aggiuntiva per un file picker.
+struct TemplateJSONDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    static var writableContentTypes: [UTType] { [.json] }
+
+    var data: Data
+
+    init(data: Data) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
 
 /// Selezione corrente nella sidebar: griglia completa, vista Focus, o singolo servizio.
 enum SidebarSelection: Hashable {
@@ -45,6 +70,8 @@ struct SidebarView: View {
     @State private var showNewProjectAlert = false
     @State private var newProjectName = ""
     @State private var newProjectError: String?
+    @State private var exportingProject: String?
+    @State private var showImportSheet = false
 
     /// `List(selection:)` richiede un binding opzionale; un deselect (nil) ricade su `.grid`
     /// così la vista di dettaglio ha sempre una selezione valida.
@@ -69,7 +96,7 @@ struct SidebarView: View {
                 ForEach(projects) { project in
                     Section {
                         ForEach(controllers(forProject: project)) { controller in
-                            serviceRow(for: controller)
+                            serviceRow(for: controller, projectID: project.id)
                                 .tag(SidebarSelection.service(controller.id))
                         }
 
@@ -83,6 +110,9 @@ struct SidebarView: View {
                         Text(project.name)
                     }
                     .contextMenu {
+                        Button("Esporta progetto…") {
+                            exportingProject = project.id
+                        }
                         Button("Elimina progetto", role: .destructive) {
                             deletingProject = project.id
                         }
@@ -102,6 +132,12 @@ struct SidebarView: View {
                 } label: {
                     Label("Nuovo progetto", systemImage: "plus")
                 }
+
+                Button {
+                    showImportSheet = true
+                } label: {
+                    Label("Importa progetto…", systemImage: "square.and.arrow.down")
+                }
             }
         }
         .listStyle(.sidebar)
@@ -119,6 +155,19 @@ struct SidebarView: View {
         )) { target in
             ServiceFormSheet(model: model, projectID: target.projectID, mode: .edit(originalName: target.originalName)) {
                 editingService = nil
+            }
+        }
+        .sheet(item: Binding(
+            get: { exportingProject.map(SheetProjectID.init) },
+            set: { exportingProject = $0?.id }
+        )) { wrapped in
+            ExportTemplateSheet(model: model, projectID: wrapped.id) {
+                exportingProject = nil
+            }
+        }
+        .sheet(isPresented: $showImportSheet) {
+            ImportTemplateSheet(model: model) {
+                showImportSheet = false
             }
         }
         .confirmationDialog(
@@ -179,7 +228,7 @@ struct SidebarView: View {
             .tag(SidebarSelection.focus)
 
         ForEach(model.services) { controller in
-            serviceRow(for: controller)
+            serviceRow(for: controller, projectID: controller.config.projectName)
                 .tag(SidebarSelection.service(controller.id))
         }
     }
@@ -188,7 +237,12 @@ struct SidebarView: View {
         model.services.filter { $0.config.projectName == project.name }
     }
 
-    private func serviceRow(for controller: ServiceController) -> some View {
+    /// `projectID` è l'id reale del progetto (da `StoredProject.id`, passato esplicitamente
+    /// dal chiamante) — NON derivato da `controller.config.projectName`, che è il nome
+    /// leggibile del progetto e coincide con l'id solo perché `StoredProject.id == name`.
+    /// Nel fallback legacy (nessuno store) i due valori restano equivalenti, quindi il
+    /// comportamento per quel percorso non cambia.
+    private func serviceRow(for controller: ServiceController, projectID: String) -> some View {
         HStack(spacing: 8) {
             StatusDot(status: controller.status)
                 .scaleEffect(0.75)
@@ -210,13 +264,13 @@ struct SidebarView: View {
         }
         .contextMenu {
             Button("Modifica…") {
-                editingService = (controller.config.projectName, controller.config.name)
+                editingService = (projectID, controller.config.name)
             }
             .disabled(controller.processAlive)
             .help(controller.processAlive ? "Ferma il servizio per modificarlo" : "")
 
             Button("Elimina", role: .destructive) {
-                deletingService = (controller.config.projectName, controller.config.name)
+                deletingService = (projectID, controller.config.name)
             }
         }
     }
@@ -266,4 +320,113 @@ private struct SheetEditTarget: Identifiable {
     let projectID: String
     let originalName: String
     var id: String { "\(projectID)/\(originalName)" }
+}
+
+/// Sheet minimale di export: chiede la root rispetto a cui rendere relative le directory dei
+/// servizi (default = genitore comune calcolato da `ProjectTemplateCodec.commonRoot`, fallback
+/// home dell'utente), poi scrive `<nome progetto>.blauncher.json` via `.fileExporter`.
+private struct ExportTemplateSheet: View {
+    var model: AppModel
+    var projectID: String
+    var onDismiss: () -> Void
+
+    @State private var rootURL: URL?
+    @State private var showRootPicker = false
+    @State private var showFileExporter = false
+    @State private var exportDocument: TemplateJSONDocument?
+    @State private var errorMessage: String?
+
+    private var project: StoredProject? {
+        model.store?.projects.first { $0.id == projectID }
+    }
+
+    private var suggestedFileName: String {
+        (project?.name ?? "progetto") + ".blauncher.json"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Esporta template").font(.title2.weight(.semibold))
+
+            if let project {
+                Text("Progetto \"\(project.name)\" — \(project.services.count) backend")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Root del progetto").font(.headline)
+                Text("Le cartelle dei backend verranno salvate come path relativi a questa root, così chi importa il template può ribasarle sul proprio Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Text(rootURL?.path ?? "Nessuna cartella selezionata")
+                        .font(.callout)
+                        .foregroundStyle(rootURL == nil ? Color.secondary : Color.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button("Scegli…") { showRootPicker = true }
+                }
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack {
+                Spacer()
+                Button("Annulla", role: .cancel) { onDismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Esporta…") { prepareExport() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(rootURL == nil || project == nil)
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+        .onAppear(perform: prefillDefaultRoot)
+        .fileImporter(isPresented: $showRootPicker, allowedContentTypes: [.folder]) { result in
+            guard case .success(let url) = result else { return }
+            rootURL = url
+        }
+        .fileExporter(isPresented: $showFileExporter,
+                      document: exportDocument,
+                      contentType: .json,
+                      defaultFilename: suggestedFileName) { result in
+            switch result {
+            case .success:
+                onDismiss()
+            case .failure(let error):
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Default proposto: genitore comune delle directory dei servizi del progetto, calcolato
+    /// da `ProjectTemplateCodec.commonRoot`; se non calcolabile (servizi senza antenato comune,
+    /// o progetto senza servizi), ricade sulla home dell'utente.
+    private func prefillDefaultRoot() {
+        guard rootURL == nil else { return }
+        let directories = project?.services.map(\.directory) ?? []
+        rootURL = ProjectTemplateCodec.commonRoot(forServiceDirectories: directories)
+            ?? FileManager.default.homeDirectoryForCurrentUser
+    }
+
+    private func prepareExport() {
+        guard let store = model.store, let rootURL else { return }
+        do {
+            let data = try store.exportTemplate(projectID: projectID, root: rootURL)
+            exportDocument = TemplateJSONDocument(data: data)
+            showFileExporter = true
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }

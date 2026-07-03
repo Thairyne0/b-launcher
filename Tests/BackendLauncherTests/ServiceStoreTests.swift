@@ -347,4 +347,75 @@ import Testing
         store.removeService(named: "non-esiste", fromProject: "Skillera")
         #expect(store.projects.first?.services.count == 6)
     }
+
+    // MARK: - Template export/import (Phase E)
+
+    @Test func exportUnknownProjectThrows() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        #expect(throws: StoreError.self) {
+            try store.exportTemplate(projectID: "non-esiste", root: URL(fileURLWithPath: "/tmp"))
+        }
+    }
+
+    @Test func exportTemplateProducesDecodableData() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let root = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+
+        let data = try store.exportTemplate(projectID: "Skillera", root: root)
+        let template = try ProjectTemplateCodec.decode(data)
+
+        #expect(template.name == "Skillera")
+        #expect(template.services.count == 6)
+        #expect(template.services.allSatisfy { !$0.relativeDirectory.hasPrefix("/") })
+    }
+
+    @Test func importTemplatePersistsAndReloadSeesProject() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+
+        // Rimuovi il progetto originale per evitare collisione di nome sull'import.
+        store.removeProject(id: "Skillera")
+
+        let importRoot = URL(fileURLWithPath: "/Users/colleague/repos/SkillLocale")
+        let imported = try store.importTemplate(data, root: importRoot)
+
+        #expect(imported.name == "Skillera")
+        #expect(store.projects.contains { $0.name == "Skillera" })
+        let gateway = try #require(store.projects.first { $0.name == "Skillera" }?.services.first { $0.name == "gateway" })
+        #expect(gateway.directory == "/Users/colleague/repos/SkillLocale/SKILLGATEWAY-BE")
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.contains { $0.name == "Skillera" })
+    }
+
+    @Test func importCollisionThrowsDuplicate() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+
+        // Store ha già "Skillera" (dalla migrazione): l'import senza override collide.
+        #expect(throws: StoreError.self) {
+            try store.importTemplate(data, root: URL(fileURLWithPath: "/Users/colleague/repos/SkillLocale"))
+        }
+        #expect(store.projects.count == 1)
+    }
+
+    @Test func importWithOverrideNameSucceeds() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+
+        let imported = try store.importTemplate(data, root: URL(fileURLWithPath: "/Users/colleague/repos/SkillLocale"),
+                                                  nameOverride: "Skillera (colleague)")
+
+        #expect(imported.name == "Skillera (colleague)")
+        #expect(store.projects.count == 2)
+        #expect(store.projects.contains { $0.name == "Skillera (colleague)" })
+    }
 }
