@@ -15,7 +15,7 @@ final class ServiceController: Identifiable {
 
     /// Statistiche CPU/RAM del process group corrente (nil finché non c'è una seconda lettura).
     private(set) var stats: ProcessStats.Sample?
-    private nonisolated(unsafe) var statsTask: Task<Void, Never>?
+    private var statsTask: Task<Void, Never>?
     private var lastCPUSeconds: Double?
 
     // servizi con readiness .logMarker: pronto quando il log annuncia l'avvio
@@ -63,7 +63,7 @@ final class ServiceController: Identifiable {
         }
     }
 
-    deinit {
+    isolated deinit {
         statsTask?.cancel()
     }
 
