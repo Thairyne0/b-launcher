@@ -32,6 +32,24 @@ enum EnvFileWriter {
         return !envFileExists(in: directory)
     }
 
+    /// Nomi convenzionali del template d'esempio dell'env, in ordine di priorità.
+    private static let exampleFileNames = [".env.example", ".env.sample", ".env.template", ".env.dist"]
+
+    /// Contenuto del primo template d'esempio presente nella cartella (`.env.example` &co.),
+    /// usato per precompilare l'editor dello sheet. Sola lettura del backend. Cap a 1 MB:
+    /// un "esempio" più grande non è un esempio, è un file sbagliato.
+    static func exampleContent(in directory: URL) -> (fileName: String, content: String)? {
+        for fileName in exampleFileNames {
+            let url = directory.appendingPathComponent(fileName)
+            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+            guard let size = (attributes?[.size] as? NSNumber)?.intValue, size <= 1_000_000 else { continue }
+            guard let content = (try? String(contentsOf: url, encoding: .utf8))
+                ?? (try? String(contentsOf: url, encoding: .isoLatin1)) else { continue }
+            return (fileName, content)
+        }
+        return nil
+    }
+
     /// Esito di `git -C <dir> check-ignore -q .env`. Rispetta anche la config globale
     /// dell'utente (un `core.excludesfile` che copre `.env` protegge dal commit tanto quanto
     /// il `.gitignore` di repo); `environment` è iniettabile solo per rendere i test immuni

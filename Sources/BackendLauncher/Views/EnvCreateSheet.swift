@@ -16,6 +16,9 @@ struct EnvCreateSheet: View {
     @State private var gitStatus: EnvFileWriter.GitIgnoreStatus?
     @State private var riskAccepted = false
     @State private var errorMessage: String?
+    /// Nome del template d'esempio (.env.example &co.) usato per precompilare l'editor,
+    /// se trovato — mostrato come nota sotto l'editor.
+    @State private var prefilledFromExample: String?
 
     private var keyCount: Int { EnvFileWriter.envKeyCount(content) }
     private var contentIsEmpty: Bool {
@@ -63,6 +66,13 @@ struct EnvCreateSheet: View {
                     }
                 }
 
+            if let prefilledFromExample {
+                Label("Precompilato da \(prefilledFromExample): sostituisci i valori con quelli veri.",
+                      systemImage: "doc.on.doc")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if !contentIsEmpty {
                 Label(keyCount == 1 ? "1 variabile rilevata" : "\(keyCount) variabili rilevate",
                       systemImage: keyCount > 0 ? "checkmark.circle" : "questionmark.circle")
@@ -99,6 +109,11 @@ struct EnvCreateSheet: View {
         .padding(20)
         .frame(width: 540)
         .task {
+            // Precompila dall'eventuale .env.example (solo se l'utente non ha già scritto).
+            if content.isEmpty, let example = EnvFileWriter.exampleContent(in: directory) {
+                content = example.content
+                prefilledFromExample = example.fileName
+            }
             // `gitIgnoreStatus` spawna `git`: fuori dal MainActor per non bloccare la UI.
             let dir = directory
             gitStatus = await Task.detached(priority: .userInitiated) {
@@ -159,6 +174,7 @@ struct EnvCreateSheet: View {
             ?? (try? String(contentsOf: url, encoding: .isoLatin1)) {
             content = text
             errorMessage = nil
+            prefilledFromExample = nil  // il contenuto non viene più dall'esempio
         } else {
             errorMessage = "Impossibile leggere il file come testo."
         }

@@ -114,6 +114,34 @@ import Testing
         }
     }
 
+    // MARK: - exampleContent
+
+    @Test func exampleContentReadsEnvExample() throws {
+        let dir = try tempDir()
+        try "PORT=\nDB_URL=\n".write(to: dir.appendingPathComponent(".env.example"),
+                                     atomically: true, encoding: .utf8)
+
+        let example = try #require(EnvFileWriter.exampleContent(in: dir))
+        #expect(example.fileName == ".env.example")
+        #expect(example.content == "PORT=\nDB_URL=\n")
+    }
+
+    @Test func exampleContentPriorityExampleBeforeSample() throws {
+        let dir = try tempDir()
+        try "SAMPLE=1".write(to: dir.appendingPathComponent(".env.sample"),
+                             atomically: true, encoding: .utf8)
+        try "EXAMPLE=1".write(to: dir.appendingPathComponent(".env.example"),
+                              atomically: true, encoding: .utf8)
+
+        let example = try #require(EnvFileWriter.exampleContent(in: dir))
+        #expect(example.fileName == ".env.example")
+    }
+
+    @Test func exampleContentNilWithoutTemplateFiles() throws {
+        let dir = try tempDir()
+        #expect(EnvFileWriter.exampleContent(in: dir) == nil)
+    }
+
     // MARK: - gitIgnoreStatus
 
     @Test func gitIgnoreStatusIgnoredWhenGitignoreCoversEnv() throws {
