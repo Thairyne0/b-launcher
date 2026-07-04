@@ -66,10 +66,16 @@ enum HelpContent {
             title: "Primi passi",
             symbolName: "flag.checkered",
             blocks: [
+                .paragraph("Il menu \"＋ Aggiungi progetto\" in fondo alla sidebar ha quattro voci:"),
                 .bullets([
-                    "Crea un progetto con \"+ Nuovo progetto\".",
-                    "Aggiungi un backend: cartella, nome, comando (es. \"npm run start:dev\") e criterio di prontezza.",
-                    "Avvialo con ▶︎ sulla card, oppure con \"Avvia progetto\" dal menu contestuale del progetto.",
+                    "Nuovo progetto — crea un progetto vuoto, poi aggiungi i backend a mano (cartella, comando, criterio di prontezza).",
+                    "Scansiona cartella… — analizza una cartella esistente (monorepo o singolo repo) e propone i backend riconosciuti, già pronti da rivedere e creare.",
+                    "Importa progetto… — legge un template .blauncher.json esportato da un collega.",
+                    "Genera con Claude Code… — copia un prompt pronto per far generare il template a Claude Code."
+                ]),
+                .paragraph("Puoi anche trascinare una cartella o un file .blauncher.json sulla finestra: una cartella avvia la stessa scansione di \"Scansiona cartella…\", un file .json precarica l'import."),
+                .bullets([
+                    "Avvia un backend con ▶︎ sulla card, oppure con \"Avvia progetto\" dal menu contestuale del progetto.",
                     "Leggi i log con il chevron sulla card o con doppio click sulla card stessa."
                 ])
             ]
@@ -131,8 +137,10 @@ enum HelpContent {
                     "Esporta progetto…",
                     "Elimina progetto"
                 ]),
-                .paragraph("Se le cartelle dei backend non esistono su questo Mac, un banner \"cartelle mancanti\" te lo segnala."),
+                .paragraph("Se le cartelle dei backend non esistono su questo Mac, un banner \"cartelle mancanti\" te lo segnala, con la possibilità di ripuntare la cartella o eliminare il progetto direttamente da lì."),
                 .paragraph("Per modificare un servizio, usa il tasto destro sul rigo: va prima fermato. Se modifichi un servizio mentre è in esecuzione, le modifiche restano \"in sospeso\" (icona arancione) e si applicano solo quando lo fermi."),
+                .subheading("Sincronizza (template del team)"),
+                .paragraph("Se il progetto è stato importato da un template .blauncher.json e quel file cambia su disco (tipicamente dopo un git pull che porta una revisione aggiornata da un collega), un banner \"Il template del progetto è cambiato\" appare sopra la griglia del progetto. \"Sincronizza\" rilegge il file e sostituisce backend, profili e spia infrastruttura, preservando nome e colore del progetto. I backend in esecuzione non vengono fermati: le loro modifiche restano in sospeso e si applicano al prossimo riavvio, come per una modifica manuale.")
             ]
         ),
         HelpSection(
@@ -154,11 +162,18 @@ enum HelpContent {
             symbolName: "keyboard",
             blocks: [
                 .bullets([
+                    "⌘K — palette comandi (naviga e agisci senza mouse)",
                     "⌘E — espandi/comprimi tutti i terminali",
                     "⌘1…⌘9 — terminale del singolo servizio",
                     "⌘⇧A — avvia tutti",
                     "⌘⇧S — ferma tutti (con conferma)",
                     "⌘⇧R — riavvia tutti",
+                    "⌘N — nuovo progetto",
+                    "⌘⇧N — scansiona cartella…",
+                    "⌘⇧I — importa progetto…",
+                    "⌘⇧G — genera con Claude Code…",
+                    "⌘0 — apri il launcher dalla menu bar (dal menu dell'icona nella barra dei menu)",
+                    "⌘= / ⌘− — aumenta/riduci la dimensione del testo del terminale",
                     "⌘, — impostazioni",
                     "⌘? — questo aiuto",
                     "Esc / Invio nei dialoghi — Annulla / Conferma"
@@ -189,6 +204,8 @@ enum HelpContent {
                     "Intervallo di aggiornamento dello stato (default 2 s).",
                     "Attesa prima del kill forzato (default 5 s).",
                     "Righe massime per terminale (default 5000 — vale per i nuovi avvii).",
+                    "Dimensione testo terminale (anche da ⌘= / ⌘−).",
+                    "Aspetto: Sistema / Chiaro / Scuro.",
                     "Notifiche di crash on/off."
                 ])
             ]
@@ -206,7 +223,16 @@ enum HelpContent {
                     "\"Cartella mancante\" — il percorso non esiste su questo Mac: usa \"Cambia cartella radice\" o \"Modifica\".",
                     "Spia infrastruttura rossa — il broker/DB del progetto è giù: i backend partono ma non comunicano.",
                     "Avvio lento oltre 90 secondi — controlla i log per capire cosa sta succedendo."
-                ])
+                ]),
+                .subheading("Limitazione Docker"),
+                .paragraph("Se il comando di un backend usa Docker (es. \"docker compose up\"), il launcher ferma solo il comando: i container restano attivi. Prevedi uno stop manuale (\"docker compose down\") — il form di modifica del backend te lo ricorda quando rileva \"docker\" nel comando."),
+                .subheading("Comandi ed ambiente"),
+                .bullets([
+                    "Comandi composti supportati — sequenze con \"&&\", \";\", \"|\" e simili girano come su un terminale normale.",
+                    "nvm / pyenv supportati — il comando gira in una login shell zsh che sorge anche ~/.zshrc, quindi vede lo stesso PATH del tuo terminale (Homebrew, nvm, pyenv, conda…).",
+                    "Output dei servizi Python — PYTHONUNBUFFERED viene impostato automaticamente (se non già presente), così i log di un processo Python compaiono in tempo reale invece di restare bufferizzati."
+                ]),
+                .paragraph("Durante una scansione cartella, se due backend risultano sulla stessa porta il secondo viene automaticamente declassato a un criterio di prontezza diverso (marker nei log o sempre pronto) invece di lasciare un conflitto di porta — rivedibile dopo con \"Modifica…\".")
             ]
         )
     ]

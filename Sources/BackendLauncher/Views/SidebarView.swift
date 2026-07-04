@@ -499,7 +499,7 @@ struct SidebarView: View {
             if model.pendingConfigChanges.contains(controller.id) {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .foregroundStyle(.orange)
-                    .help("Modifiche in sospeso: ferma il servizio per applicarle")
+                    .help("Modifiche in sospeso: ferma il backend per applicarle")
             }
             Spacer()
             if controller.logs.errorCount > 0 {
@@ -519,7 +519,7 @@ struct SidebarView: View {
                 editingService = (projectID, controller.config.name)
             }
             .disabled(controller.processAlive)
-            .help(controller.processAlive ? "Ferma il servizio per modificarlo" : "")
+            .help(controller.processAlive ? "Ferma il backend per modificarlo" : "")
 
             Button("Elimina", role: .destructive) {
                 deletingService = (projectID, controller.config.name)
@@ -555,8 +555,8 @@ struct SidebarView: View {
         rebasingProject = nil
         guard let store = model.store else { return }
         switch result {
-        case .failure(let error):
-            rebaseError = error.localizedDescription
+        case .failure:
+            rebaseError = "Impossibile aprire il selettore file. Riprova."
         case .success(let url):
             do {
                 try store.rebaseProject(id: projectID, ontoRoot: url)
@@ -671,8 +671,8 @@ private struct ExportTemplateSheet: View {
             case .success:
                 ToastCenter.shared.show("Template esportato", systemImage: "square.and.arrow.up")
                 onDismiss()
-            case .failure(let error):
-                errorMessage = error.localizedDescription
+            case .failure:
+                errorMessage = "Esportazione non riuscita. Controlla i permessi della cartella di destinazione."
             }
         }
     }

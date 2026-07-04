@@ -52,15 +52,39 @@ make clean   # rimuove .build e dist
 
 ## Wizard progetti e backend
 
-- **+ Nuovo progetto**: crea un progetto vuoto (nome univoco, non case-sensitive).
+Il menu **"＋ Aggiungi progetto"** in fondo alla sidebar propone quattro vie:
+
+- **Nuovo progetto** (⌘N): crea un progetto vuoto (nome univoco, non
+  case-sensitive), poi aggiungi i backend a mano.
+- **Scansiona cartella…** (⌘⇧N): analizza una cartella esistente (monorepo o
+  singolo repo) e propone i backend riconosciuti — vedi "Scanner progetti"
+  sotto.
+- **Importa progetto…** (⌘⇧I): importa un template `.blauncher.json` esportato
+  da un collega — vedi "Import/export progetti".
+- **Genera con Claude Code…** (⌘⇧G): copia negli appunti un prompt pronto per
+  far generare il template a Claude Code.
+
+Puoi anche **trascinare** una cartella o un file `.blauncher.json` sulla
+finestra principale: una cartella avvia la stessa scansione di "Scansiona
+cartella…", un file `.json` precarica l'import.
+
 - **+ Aggiungi backend**: cartella di lavoro, comando di avvio, e tipo di
   readiness:
   - **Porta TCP**: pronto quando la porta indicata risulta aperta;
   - **Marker nei log**: pronto quando una stringa specifica compare nell'output;
   - **Sempre pronto (processo vivo)**: pronto non appena il processo parte.
+  - Se il comando contiene "docker", un avviso ricorda che il launcher non
+    ferma i container (vedi "Limitazione Docker" sotto).
 - **Modifica…** / **Elimina** su un servizio: tasto destro sulla riga in sidebar
   (modifica disabilitata mentre il servizio è in esecuzione). Stesso schema per i
   progetti (**Elimina progetto** da tasto destro sulla riga progetto).
+- **Scanner progetti**: `Scansiona cartella…` riconosce i backend Node/NestJS di
+  un monorepo (o repo singolo) leggendo `package.json` e propone nome, comando e
+  readiness già compilati, con la possibilità di includere/escludere ogni
+  backend e la spia infrastruttura suggerita (da `docker-compose.yml`) prima di
+  creare il progetto. Se due backend risultano sulla stessa porta, il secondo
+  viene automaticamente declassato a un altro criterio di prontezza invece di
+  lasciare un conflitto — rivedibile dopo con "Modifica…".
 
 ## Import/export progetti (template)
 
@@ -76,6 +100,20 @@ make clean   # rimuove .build e dist
 - **Nota di sicurezza**: un path relativo che contiene una componente `..` viene
   **rifiutato** in import — un template non può risolvere directory al di fuori
   della root scelta dall'utente.
+- **Deep link `blauncher://import`**: `open "blauncher://import?file=<percorso
+  assoluto .blauncher.json>&root=<percorso assoluto repo>"` (parametro `root`
+  opzionale) apre direttamente `Importa progetto…` precompilato — è il comando
+  "un click" che il prompt di generazione con Claude Code suggerisce di
+  stampare a fine analisi. Se l'app è già in esecuzione, riusa la stessa
+  finestra invece di aprirne una nuova.
+- **Sincronizza (template del team)**: se un progetto è stato importato da un
+  file `.blauncher.json` tracciato e quel file cambia su disco (es. dopo un
+  `git pull` che porta una revisione aggiornata da un collega), un banner
+  "Il template del progetto è cambiato" appare sopra la griglia del progetto.
+  "Sincronizza" rilegge il file e sostituisce backend/profili/spia
+  infrastruttura, preservando nome e colore del progetto; i backend in
+  esecuzione non vengono fermati — le loro modifiche si applicano al prossimo
+  riavvio.
 
 ## Terminali
 
@@ -115,9 +153,17 @@ torna disponibile).
   Avvia/Ferma tutti senza aprire la finestra principale.
 - **Notifiche di crash**: notifica locale macOS al crash di un backend; il tap
   attiva l'app e apre direttamente il servizio interessato (deep-link).
-- **Scorciatoie da tastiera**: ⌘E (espandi/comprimi tutti i terminali), ⌘1–⌘9
-  (apri/chiudi il terminale dei primi 9 servizi), ⌘⇧A (avvia tutti), ⌘⇧S (ferma
-  tutti, con conferma).
+- **Palette comandi (⌘K)**: cerca e lancia qualunque azione (vai a un servizio,
+  avvia/ferma/riavvia, apri Aiuto, avvia un progetto…) senza staccare le mani
+  dalla tastiera.
+- **Scorciatoie da tastiera**: ⌘K (palette comandi), ⌘E (espandi/comprimi tutti
+  i terminali), ⌘1–⌘9 (apri/chiudi il terminale dei primi 9 servizi), ⌘⇧A
+  (avvia tutti), ⌘⇧S (ferma tutti, con conferma), ⌘⇧R (riavvia tutti), ⌘N
+  (nuovo progetto), ⌘⇧N (scansiona cartella…), ⌘⇧I (importa progetto…), ⌘⇧G
+  (genera con Claude Code…), ⌘0 (apri il launcher dal menu della barra dei
+  menu), ⌘= / ⌘− (aumenta/riduci il testo del terminale).
+- **Aspetto**: Sistema / Chiaro / Scuro, forzabile dalle Impostazioni (⌘,)
+  indipendentemente dall'aspetto di sistema.
 - **Profili di avvio**: sottoinsiemi di servizi avviabili con un click, definiti
   per progetto (menu "Profili" in toolbar, con submenu per progetto se ce n'è
   più di uno).
@@ -128,6 +174,15 @@ torna disponibile).
   backend attivi chiede conferma; lo stop è pulito su tutto il process group
   (SIGTERM → attesa → SIGKILL), niente processi orfani. Chiudere la finestra non
   termina l'app finché la menu bar extra resta attiva.
+- **Limitazione Docker**: il launcher ferma solo il comando lanciato (es.
+  `docker compose up`), non i container Docker che quel comando avvia — prevedi
+  uno stop manuale (`docker compose down`). Il form di un backend mostra un
+  avviso quando il comando contiene "docker".
+- **Comandi ed ambiente**: comandi composti (`&&`, `;`, `|`, …) sono supportati
+  come su un terminale normale; nvm/pyenv/conda funzionano perché la shell di
+  lancio sorge anche `~/.zshrc` (vedi Requisiti); l'output dei servizi Python
+  non resta bufferizzato (`PYTHONUNBUFFERED=1` impostato automaticamente se non
+  già presente).
 
 ## Configurazione
 

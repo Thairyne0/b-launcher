@@ -89,7 +89,7 @@ struct ScanResultsSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Servizi trovati")
+            Text("Backend trovati")
                 .font(.title2.weight(.semibold))
             Text(root.path)
                 .font(.callout)
@@ -104,9 +104,9 @@ struct ScanResultsSheet: View {
         VStack {
             Spacer()
             ContentUnavailableView {
-                Label("Nessun servizio riconosciuto", systemImage: "questionmark.folder")
+                Label("Nessun backend riconosciuto", systemImage: "questionmark.folder")
             } description: {
-                Text("Nessun servizio riconosciuto in questa cartella. Prova il wizard \"Nuovo progetto\" per configurarlo manualmente, oppure genera un template con Claude Code.")
+                Text("Nessun backend riconosciuto in questa cartella. Prova il wizard \"Nuovo progetto\" per configurarlo manualmente, oppure genera un template con Claude Code.")
             }
             Spacer()
             HStack {
@@ -171,13 +171,19 @@ struct ScanResultsSheet: View {
     }
 
     private var footer: some View {
-        HStack {
-            Spacer()
-            Button("Annulla", role: .cancel) { onDismiss() }
-                .keyboardShortcut(.cancelAction)
-            Button("Crea progetto (\(selectedCount))") { createProject() }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canCreate)
+        VStack(alignment: .trailing, spacing: 8) {
+            Text("Porta o comando sbagliati? Dopo la creazione: tasto destro sul backend in sidebar → Modifica…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Spacer()
+                Button("Annulla", role: .cancel) { onDismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Crea progetto (\(selectedCount))") { createProject() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canCreate)
+            }
         }
     }
 
@@ -238,7 +244,7 @@ struct ScanResultsSheet: View {
         }
 
         model.reloadFromStore()
-        ToastCenter.shared.show("Progetto \(trimmedName) creato con \(addedCount) servizi", systemImage: "checkmark.circle.fill")
+        ToastCenter.shared.show("Progetto \(trimmedName) creato con \(addedCount) backend", systemImage: "checkmark.circle.fill")
         onCreated?(projectID)
         onDismiss()
     }

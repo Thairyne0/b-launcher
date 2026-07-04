@@ -17,6 +17,12 @@ struct ContentView: View {
     /// (`emptyProjectView`) — pilota una sheet di competenza di questa vista, indipendente da
     /// quella (analoga) ospitata da `SidebarView` per il resto dei flussi add/edit.
     @State private var addingServiceToProjectID: String?
+    /// Progetto per cui è stata richiesta l'eliminazione dal banner "cartelle mancanti" —
+    /// pilota una `confirmationDialog` duplicata minimale rispetto a quella (analoga) di
+    /// `SidebarView`, perché il banner vive nel dettaglio e non ha accesso allo stato privato
+    /// della sidebar. Stessa semantica: i servizi in esecuzione del progetto vengono fermati
+    /// PRIMA di rimuoverlo dallo store (vedi `SidebarView.confirmDeleteProject`).
+    @State private var deletingProjectID: String?
     /// `true` finché l'utente non ha mai chiuso la sheet di benvenuto — persistito così la
     /// sheet appare una volta sola nella vita dell'installazione, non a ogni avvio dell'app.
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
@@ -103,15 +109,15 @@ struct ContentView: View {
                 showWelcomeSheet = false
             }
         }
-        .alert("NATS non raggiungibile", isPresented: $model.showNATSWarning) {
+        .alert(infraAlertTitle, isPresented: $model.showNATSWarning) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("La porta 4222 è chiusa: i backend partono ma non comunicano tra loro. Controlla i container Docker (skillera-nats).")
+            Text(infraAlertMessage)
         }
         .confirmationDialog("Fermare tutti i backend?", isPresented: $model.stopAllRequested) {
             Button("Ferma tutti", role: .destructive) {
                 model.stopAll()
-                ToastCenter.shared.show("Arresto di tutti i servizi", systemImage: "stop.circle.fill")
+                ToastCenter.shared.show("Arresto di tutti i backend", systemImage: "stop.circle.fill")
             }
             Button("Annulla", role: .cancel) {}
         } message: {
@@ -170,7 +176,37 @@ struct ContentView: View {
         } message: {
             Text(rebaseError ?? "")
         }
+        .confirmationDialog(
+            "Eliminare questo progetto?",
+            isPresented: Binding(
+                get: { deletingProjectID != nil },
+                set: { if !$0 { deletingProjectID = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Elimina progetto", role: .destructive) {
+                if let id = deletingProjectID {
+                    confirmDeleteProject(id: id)
+                }
+                deletingProjectID = nil
+            }
+            Button("Annulla", role: .cancel) { deletingProjectID = nil }
+        } message: {
+            Text("Tutti i backend del progetto verranno rimossi. Quelli in esecuzione verranno prima fermati.")
+        }
         .frame(minWidth: 760, minHeight: 480)
+    }
+
+    /// Titolo dinamico dell'alert infrastruttura, derivato da `model.infraCheck` invece che
+    /// hardcoded su NATS/4222: il progetto scansionato/configurato può dichiarare un'altra
+    /// spia (Redis, Postgres, ...), quindi titolo e messaggio devono seguirla.
+    private var infraAlertTitle: String {
+        "\(model.infraCheck?.label ?? "Infrastruttura") non raggiungibile"
+    }
+
+    private var infraAlertMessage: String {
+        let port = model.infraCheck?.port.description ?? "?"
+        return "La porta \(port) è chiusa: i backend partono ma potrebbero non funzionare correttamente. Controlla che l'infrastruttura del progetto sia attiva."
     }
 
     @ViewBuilder
@@ -191,7 +227,7 @@ struct ContentView: View {
                         .padding(20)
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 } else {
-                    ContentUnavailableView("Servizio non trovato", systemImage: "questionmark.square.dashed")
+                    ContentUnavailableView("Backend non trovato", systemImage: "questionmark.square.dashed")
                 }
             case .project(let id):
                 let projectServices = model.services.filter { $0.config.projectName == id }
@@ -260,7 +296,7 @@ struct ContentView: View {
                 Button("Avvia tutti", systemImage: "play.fill") {
                     let startingCount = model.services.filter { !$0.processAlive }.count
                     model.startAll()
-                    ToastCenter.shared.show("Avvio di \(startingCount) servizi…", systemImage: "play.circle.fill")
+                    ToastCenter.shared.show("Avvio di \(startingCount) backend…", systemImage: "play.circle.fill")
                 }
                     .disabled(model.services.allSatisfy { $0.processAlive })
                     .help("Avvia tutti (⌘⇧A)")
@@ -282,7 +318,7 @@ struct ContentView: View {
         case .project(let id):
             return model.store?.projects.first(where: { $0.id == id })?.name ?? id
         default:
-            return "Skillera Backend"
+            return "Backend Launcher"
         }
     }
 
@@ -375,16 +411,25 @@ struct ContentView: View {
     /// vista come cruscotto d'insieme non di configurazione) o nascondere quale progetto è
     /// interessato (ambiguo). Si preferisce la versione semplice e inequivocabile: solo in
     /// `.project`, dove il banner ha esattamente un target.
+    ///
+    /// Copy estesa (disclosure primo avvio per un collega): oltre a "Cambia cartella radice…"
+    /// (ribasare sulla propria copia) offre anche "Elimina progetto…", per il caso comune in cui
+    /// il progetto è il template di esempio migrato da un collega e non serve affatto su questa
+    /// macchina — senza questo bottone l'unica via d'uscita sarebbe la sidebar, non ovvia al
+    /// primo avvio.
     private func missingRootBanner(projectID: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
                 .imageScale(.large)
-            Text("Le cartelle di questo progetto non esistono su questo Mac.")
+            Text("Le cartelle di questo progetto non esistono su questo Mac. Se è il progetto di esempio migrato, puoi eliminarlo — oppure ripuntalo alla tua copia con \"Cambia cartella radice…\".")
                 .font(.callout.weight(.medium))
             Spacer()
             Button("Cambia cartella radice…") {
                 rebasingProjectID = projectID
+            }
+            Button("Elimina progetto…", role: .destructive) {
+                deletingProjectID = projectID
             }
         }
         .padding(.horizontal, 16)
@@ -407,7 +452,7 @@ struct ContentView: View {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .foregroundStyle(.blue)
                 .imageScale(.large)
-            Text("Il template del progetto è cambiato.")
+            Text("Il template del progetto è cambiato. I backend in esecuzione non vengono fermati: le loro modifiche si applicano al prossimo riavvio.")
                 .font(.callout.weight(.medium))
             Spacer()
             Button("Sincronizza") {
@@ -519,7 +564,7 @@ struct ContentView: View {
         case PaletteIDs.startAll:
             let startingCount = model.services.filter { !$0.processAlive }.count
             model.startAll()
-            ToastCenter.shared.show("Avvio di \(startingCount) servizi…", systemImage: "play.circle.fill")
+            ToastCenter.shared.show("Avvio di \(startingCount) backend…", systemImage: "play.circle.fill")
         case PaletteIDs.stopAll:
             model.stopAllRequested = true
         case PaletteIDs.restartAll:
@@ -543,6 +588,19 @@ struct ContentView: View {
         }
     }
 
+    /// Elimina il progetto dal banner "cartelle mancanti": ferma PRIMA i backend ancora in
+    /// esecuzione (difficilmente il caso — le loro cartelle non esistono su disco — ma stessa
+    /// cautela di `SidebarView.confirmDeleteProject`, per coerenza), poi rimuove il progetto
+    /// dallo store.
+    private func confirmDeleteProject(id: String) {
+        guard let store = model.store else { return }
+        for controller in model.services where controller.config.projectName == id && controller.processAlive {
+            controller.stop()
+        }
+        store.removeProject(id: id)
+        model.reloadFromStore()
+    }
+
     /// Esito del `.fileImporter` del banner "cartelle mancanti": ribasa il progetto scelto
     /// sulla nuova root. Stessa semantica del rebase nel menu contestuale della sidebar
     /// (`SidebarView.handleRebasePick`), duplicata qui perché il banner vive nel dettaglio e
@@ -552,8 +610,8 @@ struct ContentView: View {
         rebasingProjectID = nil
         guard let store = model.store else { return }
         switch result {
-        case .failure(let error):
-            rebaseError = error.localizedDescription
+        case .failure:
+            rebaseError = "Impossibile aprire il selettore file. Riprova."
         case .success(let url):
             do {
                 try store.rebaseProject(id: projectID, ontoRoot: url)

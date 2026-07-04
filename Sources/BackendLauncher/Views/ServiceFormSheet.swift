@@ -98,7 +98,7 @@ struct ServiceFormSheet: View {
 
     private var nameError: String? {
         if trimmedName.isEmpty { return "Il nome non può essere vuoto." }
-        if !nameIsUnique { return "Esiste già un servizio chiamato \"\(trimmedName)\" in questo progetto." }
+        if !nameIsUnique { return "Esiste già un backend chiamato \"\(trimmedName)\" in questo progetto." }
         return nil
     }
 
@@ -124,6 +124,13 @@ struct ServiceFormSheet: View {
     private var folderIsMissing: Bool {
         guard let folderURL else { return false }
         return !FileManager.default.fileExists(atPath: folderURL.path)
+    }
+
+    /// Vero se il comando (case-insensitive) menziona "docker" — euristica semplice per
+    /// avvisare che il launcher non ferma i container: lo stop termina solo il processo del
+    /// comando (es. `docker compose up`), non i container che ha lanciato.
+    private var commandLooksLikeDocker: Bool {
+        command.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().contains("docker")
     }
 
     private var canSave: Bool {
@@ -171,6 +178,12 @@ struct ServiceFormSheet: View {
                 Text("Comando").font(.headline)
                 TextField("npm run start:dev", text: $command)
                     .textFieldStyle(.roundedBorder)
+                if commandLooksLikeDocker {
+                    Label("I container Docker non vengono fermati dal launcher: lo stop termina solo il comando. Prevedi uno stop manuale (docker compose down).",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -202,7 +215,7 @@ struct ServiceFormSheet: View {
                             .foregroundStyle(.red)
                     }
                 case .processAlive:
-                    Text("Il servizio è considerato pronto non appena il processo parte.")
+                    Text("Il backend è considerato pronto non appena il processo parte.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

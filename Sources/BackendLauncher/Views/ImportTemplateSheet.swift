@@ -138,8 +138,12 @@ struct ImportTemplateSheet: View {
             loadedFileURL = url
             projectName = template.name
             errorMessage = nil
+        } catch let error as ProjectTemplateError {
+            errorMessage = error.errorDescription
         } catch {
-            errorMessage = error.localizedDescription
+            // Errori non di dominio (file spostato/eliminato, JSON non valido, permessi…):
+            // un messaggio unico e comprensibile invece del testo grezzo di Foundation.
+            errorMessage = "Impossibile leggere il file: spostato, eliminato o non è un template valido."
         }
     }
 

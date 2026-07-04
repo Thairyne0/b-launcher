@@ -106,13 +106,13 @@ enum StoreError: LocalizedError, Equatable {
         case .duplicateProjectName(let name):
             "Esiste già un progetto chiamato \"\(name)\"."
         case .duplicateServiceName(let name):
-            "Esiste già un servizio chiamato \"\(name)\" in questo progetto."
+            "Esiste già un backend chiamato \"\(name)\" in questo progetto."
         case .projectNotFound(let id):
             "Progetto \"\(id)\" non trovato."
         case .duplicateProfileName(let name):
             "Esiste già un profilo chiamato \"\(name)\" in questo progetto."
         case .unknownServiceInProfile(let profile, let service):
-            "Il profilo \"\(profile)\" fa riferimento al servizio \"\(service)\", che non esiste in questo progetto."
+            "Il profilo \"\(profile)\" fa riferimento al backend \"\(service)\", che non esiste in questo progetto."
         }
     }
 }
