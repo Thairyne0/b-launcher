@@ -290,9 +290,21 @@ struct ContentView: View {
                 }
                 .disabled(!model.anyRunning)
                 .help("Riavvia (⌘⇧R)")
+                // Come per l'avvio: "Ferma progetto" agisce senza conferma (stesso
+                // comportamento della voce omonima nel menu contestuale della sidebar);
+                // la conferma resta solo per "Ferma tutti", che è l'azione globale.
+                if case .project(let id) = currentSelection {
+                    Button("Ferma progetto", systemImage: "stop.circle") {
+                        model.stopProject(named: id)
+                        ToastCenter.shared.show("Arresto progetto \(navigationTitle(for: currentSelection))",
+                                                systemImage: "stop.circle.fill")
+                    }
+                    .disabled(!model.services.contains { $0.config.projectName == id && $0.processAlive })
+                    .help("Ferma tutti i backend di questo progetto")
+                }
                 Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
                     .disabled(!model.anyRunning)
-                    .help("Ferma tutti (⌘⇧S)")
+                    .help("Ferma tutti i backend di tutti i progetti (⌘⇧S)")
                 // Sulla pagina di un progetto, l'avvio è sdoppiato: "Avvia progetto"
                 // (solo i suoi backend) accanto ad "Avvia tutti" (globale, sempre presente
                 // e prominente). Stessa visibilità condizionale di "Pulisci terminali".
