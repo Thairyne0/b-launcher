@@ -239,13 +239,11 @@ struct ContentView: View {
                     .help(model.allExpanded ? "Comprimi tutti (⌘E)" : "Espandi tutti (⌘E)")
                 }
                 profilesMenu
-                Button("Avvia tutti", systemImage: "play.fill") {
-                    let startingCount = model.services.filter { !$0.processAlive }.count
-                    model.startAll()
-                    ToastCenter.shared.show("Avvio di \(startingCount) servizi…", systemImage: "play.circle.fill")
-                }
-                    .disabled(model.services.allSatisfy { $0.processAlive })
-                    .help("Avvia tutti (⌘⇧A)")
+                // Ordine deliberato Riavvia | Ferma | Avvia (invece del precedente
+                // Avvia | Riavvia | Ferma): convenzione macOS di mettere l'azione primaria
+                // all'estrema destra del gruppo toolbar, con "Avvia tutti" enfatizzato da
+                // `.glassProminent` (vedi sotto) a marcare la gerarchia. Nessuna azione,
+                // `.disabled`, scorciatoia o toast è cambiato — solo l'ordine e lo stile.
                 Button("Riavvia", systemImage: "arrow.clockwise") {
                     if case .project(let id) = currentSelection {
                         model.restartProject(named: id)
@@ -259,6 +257,14 @@ struct ContentView: View {
                 Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
                     .disabled(!model.anyRunning)
                     .help("Ferma tutti (⌘⇧S)")
+                Button("Avvia tutti", systemImage: "play.fill") {
+                    let startingCount = model.services.filter { !$0.processAlive }.count
+                    model.startAll()
+                    ToastCenter.shared.show("Avvio di \(startingCount) servizi…", systemImage: "play.circle.fill")
+                }
+                    .disabled(model.services.allSatisfy { $0.processAlive })
+                    .help("Avvia tutti (⌘⇧A)")
+                    .buttonStyle(.glassProminent)
                 if case .project(let id) = currentSelection {
                     Button("Pulisci terminali", systemImage: "clear") {
                         model.clearProjectTerminals(named: id)

@@ -31,79 +31,93 @@ struct TerminalView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 10) {
-                HStack(spacing: 4) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Cerca nei log", text: $logs.searchText)
-                        .textFieldStyle(.plain)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.quaternary.opacity(0.5), in: .capsule)
-                .frame(maxWidth: 240)
+            // Con buffer completamente vuoto (nessun servizio mai avviato) l'intera barra
+            // controlli è puro rumore — ricerca/filtro/autoscroll non hanno nulla su cui
+            // operare. Si nasconde la riga e si mostra solo il box di stato vuoto; i controlli
+            // ricompaiono non appena arriva la prima riga di output. Quando invece le righe ci
+            // sono ma il filtro/ricerca corrente le nasconde tutte, la barra resta (l'utente
+            // deve poter cambiare filtro/ricerca per far riapparire il contenuto).
+            if !logs.lines.isEmpty {
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Cerca nei log", text: $logs.searchText)
+                            .textFieldStyle(.plain)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.quaternary.opacity(0.5), in: .capsule)
+                    .frame(minWidth: 120, maxWidth: 220)
 
-                if !logs.searchText.isEmpty {
-                    Text("\(currentMatchOrdinal)/\(logs.searchMatchIDs.count)")
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                    if !logs.searchText.isEmpty {
+                        Text("\(currentMatchOrdinal)/\(logs.searchMatchIDs.count)")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+
+                        Button {
+                            stepMatch(by: -1)
+                        } label: {
+                            Image(systemName: "chevron.up")
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .help("Match precedente")
+
+                        Button {
+                            stepMatch(by: 1)
+                        } label: {
+                            Image(systemName: "chevron.down")
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .help("Match successivo")
+                    }
+
+                    searchModeToggle
+
+                    Picker("", selection: $logs.levelFilter) {
+                        ForEach(LogStore.LevelFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .frame(maxWidth: 150)
+                    .labelsHidden()
+
+                    Spacer()
 
                     Button {
-                        stepMatch(by: -1)
+                        autoscroll.toggle()
                     } label: {
-                        Image(systemName: "chevron.up")
+                        Image(systemName: autoscroll ? "arrow.down.to.line.circle.fill" : "arrow.down.to.line.circle")
                     }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
-                    .help("Match precedente")
+                    .foregroundStyle(autoscroll ? Color.accentColor : Color.secondary)
+                    .help(autoscroll ? "Autoscroll attivo" : "Autoscroll disattivato")
 
                     Button {
-                        stepMatch(by: 1)
+                        copyToPasteboard(logs.visibleLines.map(\.text).joined(separator: "\n"))
                     } label: {
-                        Image(systemName: "chevron.down")
+                        Image(systemName: "doc.on.doc")
                     }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
-                    .help("Match successivo")
-                }
+                    .help("Copia log visibile")
 
-                searchModeToggle
-
-                Picker("", selection: $logs.levelFilter) {
-                    ForEach(LogStore.LevelFilter.allCases, id: \.self) { filter in
-                        Text(filter.rawValue).tag(filter)
+                    Button {
+                        logs.clear()
+                    } label: {
+                        Image(systemName: "trash")
                     }
-                }
-                .pickerStyle(.segmented)
-                .controlSize(.small)
-                .frame(maxWidth: 180)
-                .labelsHidden()
-
-                Spacer()
-
-                Toggle("Autoscroll", isOn: $autoscroll)
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
+                    .buttonStyle(.borderless)
                     .controlSize(.small)
-
-                Button {
-                    copyToPasteboard(logs.visibleLines.map(\.text).joined(separator: "\n"))
-                } label: {
-                    Image(systemName: "doc.on.doc")
+                    .help("Pulisci")
                 }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .help("Copia log visibile")
-
-                Button {
-                    logs.clear()
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .help("Pulisci")
+                .padding(.horizontal, 10)
             }
 
             logArea
@@ -153,8 +167,13 @@ struct TerminalView: View {
     }
 
     private var emptyState: some View {
-        VStack {
+        VStack(spacing: 8) {
             Spacer()
+            if logs.lines.isEmpty {
+                Image(systemName: "terminal")
+                    .font(.title2)
+                    .foregroundStyle(.quaternary)
+            }
             Text(logs.lines.isEmpty
                  ? "Nessun output — avvia il servizio"
                  : "Nessuna riga corrisponde a filtro o ricerca")

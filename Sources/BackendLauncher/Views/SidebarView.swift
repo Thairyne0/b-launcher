@@ -98,10 +98,12 @@ struct SidebarView: View {
     /// Progetti collassati (per id) — set vuoto di default: TUTTI i progetti partono espansi
     /// senza dover pre-popolare nulla da `projects` (evita di dover reagire a progetti nuovi).
     @State private var collapsedProjects: Set<String> = []
-    /// `true` mentre la label del bottone "Genera con Claude Code…" mostra la conferma
-    /// transiente "Prompt copiato ✓" invece del testo/icona normali (Feature 2). Un `Task`
-    /// dedicato la fa rientrare dopo ~2.5s — vedi `copyClaudeCodePrompt()`.
-    @State private var showPromptCopiedConfirmation = false
+    // (Storicamente qui viveva `showPromptCopiedConfirmation`, che pilotava uno scambio
+    // transiente di label sul bottone "Genera con Claude Code…". Da quando l'azione è entrata
+    // nel Menu "Aggiungi progetto" (design-polish pass) quel bottone si smonta nell'istante in
+    // cui l'item viene selezionato — il menu si chiude subito — quindi una label interna al
+    // menu non sarebbe mai visibile. La conferma transiente è stata sostituita da un toast
+    // (`ToastCenter`), coerente con le altre conferme "fire and forget" dell'app.)
 
     /// `List(selection:)` richiede un binding opzionale; un deselect (nil) ricade su `.grid`
     /// così la vista di dettaglio ha sempre una selezione valida.
@@ -150,34 +152,28 @@ struct SidebarView: View {
             }
 
             Section {
-                Button {
-                    newProjectName = ""
-                    newProjectError = nil
-                    showNewProjectAlert = true
-                } label: {
-                    Label("Nuovo progetto", systemImage: "plus")
-                }
-
-                Button {
-                    showImportSheet = true
-                } label: {
-                    Label("Importa progetto…", systemImage: "square.and.arrow.down")
-                }
-
-                Button {
-                    scanFolder()
-                } label: {
-                    Label("Scansiona cartella…", systemImage: "doc.text.magnifyingglass")
-                }
-
-                Button {
-                    copyClaudeCodePrompt()
-                } label: {
-                    if showPromptCopiedConfirmation {
-                        Label("Prompt copiato ✓", systemImage: "checkmark")
-                    } else {
-                        Label("Genera con Claude Code…", systemImage: "sparkles")
+                Menu {
+                    Button("Nuovo progetto", systemImage: "folder.badge.plus") {
+                        newProjectName = ""
+                        newProjectError = nil
+                        showNewProjectAlert = true
                     }
+
+                    Button("Scansiona cartella…", systemImage: "doc.text.magnifyingglass") {
+                        scanFolder()
+                    }
+
+                    Button("Importa progetto…", systemImage: "square.and.arrow.down") {
+                        showImportSheet = true
+                    }
+
+                    Divider()
+
+                    Button("Genera con Claude Code…", systemImage: "sparkles") {
+                        copyClaudeCodePrompt()
+                    }
+                } label: {
+                    Label("Aggiungi progetto", systemImage: "plus")
                 }
             }
         }
@@ -291,8 +287,9 @@ struct SidebarView: View {
     /// con la vetrosità di altri pannelli fissi dell'app) invece di uno sfondo `.clear`, che si
     /// fonderebbe con l'ultima riga della lista e renderebbe meno leggibile il confine.
     private var sidebarFooter: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 0) {
             Divider()
+                .padding(.bottom, 3)
 
             SettingsLink {
                 sidebarFooterLabel(title: "Impostazioni", systemImage: "gearshape")
@@ -316,26 +313,23 @@ struct SidebarView: View {
     /// da `List`/`Label` in stile `.sidebar`.
     private func sidebarFooterLabel(title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
-            .padding(.vertical, 4)
+            .padding(.vertical, 3)
             .padding(.horizontal, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
     }
 
-    /// Copia negli appunti il prompt pronto per Claude Code (Feature 2), poi mostra la
-    /// conferma transiente "Prompt copiato ✓" al posto della label normale per ~2.5s.
-    /// `Task` + `sleep` invece di un alert: più leggero e non blocca l'interazione con il
-    /// resto della sidebar durante la conferma.
+    /// Copia negli appunti il prompt pronto per Claude Code (Feature 2), poi conferma con un
+    /// toast ("Prompt copiato"). Il bottone che lancia l'azione ora vive dentro il Menu
+    /// "Aggiungi progetto": il menu si chiude non appena l'item viene selezionato, quindi una
+    /// label transiente interna al bottone non sarebbe mai visibile — il toast è l'unico
+    /// meccanismo di conferma che l'utente vede davvero.
     private func copyClaudeCodePrompt() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(ClaudeCodePrompt.make(), forType: .string)
 
-        showPromptCopiedConfirmation = true
-        Task {
-            try? await Task.sleep(for: .seconds(2.5))
-            showPromptCopiedConfirmation = false
-        }
+        ToastCenter.shared.show("Prompt copiato", systemImage: "checkmark")
     }
 
     /// Bottone "Scansiona cartella…": NSOpenPanel diretto (stesso motivo delle altre sheet di
