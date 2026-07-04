@@ -320,6 +320,18 @@ final class AppModel {
                         service.portOpen = results[p] ?? false
                     }
                 }
+                // Health check HTTP per i servizi con readiness .httpHealth.
+                let healthTargets: [(id: String, endpoint: HealthEndpoint)] = self.services.compactMap {
+                    guard case .httpHealth(let port, let path) = $0.config.readiness else { return nil }
+                    return ($0.id, HealthEndpoint(port: port, path: path))
+                }
+                if !healthTargets.isEmpty {
+                    let healthResults = await Self.checkHealthEndpoints(healthTargets.map(\.endpoint))
+                    for target in healthTargets {
+                        self.services.first { $0.id == target.id }?.healthOK
+                            = healthResults[target.endpoint] ?? false
+                    }
+                }
                 // Modifiche di config in sospeso: quando il servizio interessato si è
                 // fermato, ricarica dallo store per applicarle (e togliere il badge).
                 if self.pendingConfigChanges.contains(where: { id in
@@ -351,5 +363,63 @@ final class AppModel {
             for port in unique { out[port] = PortCheck.isOpen(port) }
             return out
         }.value
+    }
+
+    // MARK: - Health check HTTP (readiness .httpHealth)
+
+    /// Endpoint di health di un servizio: porta + path su 127.0.0.1.
+    struct HealthEndpoint: Hashable, Sendable {
+        let port: UInt16
+        let path: String
+    }
+
+    /// Sessione dedicata ai probe: timeout stretti (il poll gira ogni ~2s, un backend sano
+    /// su loopback risponde in millisecondi), niente cache, niente redirect (vedi delegate).
+    private static let healthSession = URLSession(
+        configuration: {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 1.5
+            configuration.timeoutIntervalForResource = 1.5
+            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            return configuration
+        }(),
+        delegate: HealthProbeNoRedirectDelegate(),
+        delegateQueue: nil
+    )
+
+    /// GET concorrente su ogni endpoint; 2xx = pronto. Un redirect (es. verso una pagina di
+    /// login) NON è "pronto": conta lo status della prima risposta.
+    static func checkHealthEndpoints(_ endpoints: [HealthEndpoint]) async -> [HealthEndpoint: Bool] {
+        let unique = Array(Set(endpoints))
+        var results: [HealthEndpoint: Bool] = [:]
+        await withTaskGroup(of: (HealthEndpoint, Bool).self) { group in
+            for endpoint in unique {
+                group.addTask { (endpoint, await Self.probeHealth(endpoint)) }
+            }
+            for await (endpoint, ok) in group {
+                results[endpoint] = ok
+            }
+        }
+        return results
+    }
+
+    private static func probeHealth(_ endpoint: HealthEndpoint) async -> Bool {
+        let path = endpoint.path.hasPrefix("/") ? endpoint.path : "/" + endpoint.path
+        guard let url = URL(string: "http://127.0.0.1:\(endpoint.port)\(path)") else { return false }
+        guard let (_, response) = try? await healthSession.data(from: url),
+              let http = response as? HTTPURLResponse else { return false }
+        return (200..<300).contains(http.statusCode)
+    }
+}
+
+/// Blocca i redirect dei probe di health: `completionHandler(nil)` restituisce la risposta
+/// 3xx originale invece di seguirla. Top-level (non nested in AppModel) per non ereditare
+/// l'isolamento MainActor — URLSession chiama il delegate sulla propria coda.
+private final class HealthProbeNoRedirectDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }

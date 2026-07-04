@@ -13,6 +13,9 @@ enum ReadinessProbe: Hashable {
     case tcpPort(UInt16)
     case logMarker(String)
     case processAlive
+    /// GET su `http://127.0.0.1:<port><path>` → 2xx = pronto (più preciso della sola porta
+    /// TCP per backend che aprono il socket prima di essere davvero operativi).
+    case httpHealth(port: UInt16, path: String)
 }
 
 /// Configurazione statica dei backend Skillera.

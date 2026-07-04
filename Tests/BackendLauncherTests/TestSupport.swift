@@ -61,6 +61,25 @@ func makeTCPListenerV6() -> (fd: Int32, port: UInt16) {
     return (fd, UInt16(bigEndian: bound.sin6_port))
 }
 
+/// Mini responder HTTP su 127.0.0.1 (porta dal kernel) per i test del health check:
+/// accetta connessioni in un thread dedicato e risponde sempre con lo status dato e body
+/// vuoto. Chiudere con `close(fd)` — l'accept fallisce e il thread esce da solo.
+func makeHTTPResponder(status: Int) -> (fd: Int32, port: UInt16) {
+    let listener = makeTCPListener()
+    Thread.detachNewThread {
+        while true {
+            let conn = accept(listener.fd, nil, nil)
+            guard conn >= 0 else { return }
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            _ = read(conn, &buffer, buffer.count)  // consuma la request, contenuto irrilevante
+            let response = "HTTP/1.1 \(status) X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            _ = response.withCString { write(conn, $0, strlen($0)) }
+            close(conn)
+        }
+    }
+    return listener
+}
+
 /// Polling asincrono di una condizione con timeout. Ritorna true se soddisfatta in tempo.
 func waitUntil(timeout: TimeInterval = 10, interval: TimeInterval = 0.05,
                _ condition: @escaping () -> Bool) async -> Bool {

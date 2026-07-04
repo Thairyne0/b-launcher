@@ -197,6 +197,8 @@ struct ScanResultsSheet: View {
             return "via log"
         case .processAlive:
             return "sempre pronto"
+        case .httpHealth:
+            return "health :\(readiness.port ?? 0)\(readiness.path ?? "/health")"
         }
     }
 

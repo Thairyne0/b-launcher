@@ -43,7 +43,15 @@ enum ProjectTemplateCodec {
     /// preserviamo il path assoluto invece di produrre un relativo insensato (es. "../../../x").
     static let absoluteMarkerPrefix = "abs:"
 
-    private static let currentVersion = 1
+    /// Massima versione di template che QUESTA app sa leggere.
+    private static let currentVersion = 2
+
+    /// Versione minima dichiarata nel template: 2 solo se serve (readiness `httpHealth`,
+    /// sconosciuta alle app v1), altrimenti 1 — un collega con l'app vecchia importa senza
+    /// problemi i template che non usano feature nuove.
+    static func versionRequired(for services: [ProjectTemplate.TemplateService]) -> Int {
+        services.contains { $0.readiness.kind == .httpHealth } ? 2 : 1
+    }
 
     /// Export: calcola i path relativi rispetto a `root`. Servizi FUORI da root → path
     /// assoluto preservato con prefisso marker "abs:" (fallback esplicito, documentato).
@@ -59,7 +67,7 @@ enum ProjectTemplateCodec {
             )
         }
         return ProjectTemplate(
-            templateVersion: currentVersion,
+            templateVersion: versionRequired(for: services),
             name: project.name,
             services: services,
             profiles: project.profiles,

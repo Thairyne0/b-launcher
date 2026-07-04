@@ -12,6 +12,7 @@ struct ServiceCardView: View {
         case .tcpPort(let p): "porta \(p)"
         case .logMarker: "via log"
         case .processAlive: "sempre pronto"
+        case .httpHealth(let p, let path): "health :\(p)\(path)"
         }
     }
 

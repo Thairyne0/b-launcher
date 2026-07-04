@@ -9,6 +9,7 @@ private enum ReadinessKind: String, CaseIterable, Identifiable {
     case port = "Porta TCP"
     case logMarker = "Marker nei log"
     case processAlive = "Sempre pronto (processo vivo)"
+    case httpHealth = "Health check HTTP"
     var id: String { rawValue }
 }
 
@@ -63,6 +64,7 @@ struct ServiceFormSheet: View {
     @State private var readinessKind: ReadinessKind = .logMarker
     @State private var portText: String = ""
     @State private var marker: String = "successfully started"
+    @State private var healthPath: String = "/health"
     @State private var symbolName: String?
     @State private var envBadgeDisabled = false
     @State private var saveError: String?
@@ -119,6 +121,7 @@ struct ServiceFormSheet: View {
         case .port: portValue != nil
         case .logMarker: markerIsValid
         case .processAlive: true
+        case .httpHealth: portValue != nil && !healthPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
@@ -189,13 +192,16 @@ struct ServiceFormSheet: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Prontezza").font(.headline)
+                // Menu e non segmented: con la quarta opzione (health HTTP) i segmenti
+                // non stanno più nella larghezza della sheet senza troncare le label.
                 Picker("", selection: $readinessKind) {
                     ForEach(ReadinessKind.allCases) { kind in
                         Text(kind.rawValue).tag(kind)
                     }
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 .labelsHidden()
+                .frame(maxWidth: 280, alignment: .leading)
 
                 switch readinessKind {
                 case .port:
@@ -217,6 +223,22 @@ struct ServiceFormSheet: View {
                     }
                 case .processAlive:
                     Text("Il backend è considerato pronto non appena il processo parte.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .httpHealth:
+                    HStack {
+                        TextField("Porta (es. 4000)", text: $portText)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 140)
+                        TextField("Path (es. /health)", text: $healthPath)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    if portValue == nil && !portText.isEmpty {
+                        Text("Porta non valida (1–65535).")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    Text("Pronto quando GET http://127.0.0.1:porta+path risponde 2xx.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -307,6 +329,10 @@ struct ServiceFormSheet: View {
             marker = service.readiness.marker ?? "successfully started"
         case .processAlive:
             readinessKind = .processAlive
+        case .httpHealth:
+            readinessKind = .httpHealth
+            portText = service.readiness.port.map(String.init) ?? ""
+            healthPath = service.readiness.path ?? "/health"
         }
         symbolName = service.symbolName
         envBadgeDisabled = service.envBadgeDisabled ?? false
@@ -323,6 +349,10 @@ struct ServiceFormSheet: View {
                                         marker: marker.trimmingCharacters(in: .whitespacesAndNewlines))
         case .processAlive:
             readiness = StoredReadiness(kind: .processAlive, port: nil, marker: nil)
+        case .httpHealth:
+            let trimmedPath = healthPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            readiness = StoredReadiness(kind: .httpHealth, port: portValue, marker: nil,
+                                        path: trimmedPath.hasPrefix("/") ? trimmedPath : "/" + trimmedPath)
         }
         // `envBadgeDisabled`: `true` esplicito, `nil` quando off — il JSON resta pulito
         // (nessuna chiave) per i servizi che usano il default.

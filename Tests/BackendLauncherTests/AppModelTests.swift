@@ -20,6 +20,23 @@ import Testing
         #expect(results[1] == false)
     }
 
+    @Test func checkHealthEndpointsDistinguishes200From500AndClosedPort() async {
+        let ok = makeHTTPResponder(status: 200)
+        defer { close(ok.fd) }
+        let broken = makeHTTPResponder(status: 500)
+        defer { close(broken.fd) }
+
+        let okEndpoint = AppModel.HealthEndpoint(port: ok.port, path: "/health")
+        let brokenEndpoint = AppModel.HealthEndpoint(port: broken.port, path: "/health")
+        let closedEndpoint = AppModel.HealthEndpoint(port: 1, path: "/health")
+
+        let results = await AppModel.checkHealthEndpoints([okEndpoint, brokenEndpoint, closedEndpoint])
+
+        #expect(results[okEndpoint] == true)
+        #expect(results[brokenEndpoint] == false)
+        #expect(results[closedEndpoint] == false)
+    }
+
     @Test func startAllAndStopAll() async {
         let model = AppModel(configs: fakeConfigs, cwd: "/tmp", pollingEnabled: false)
         model.startAll()

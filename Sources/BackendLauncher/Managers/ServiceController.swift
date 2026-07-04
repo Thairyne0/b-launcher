@@ -12,6 +12,9 @@ final class ServiceController: Identifiable {
     private(set) var processAlive = false
     private(set) var startedAt: Date?
     var portOpen = false  // aggiornato dal poller di AppModel
+    /// Esito dell'ultimo health check HTTP (readiness `.httpHealth`), aggiornato dal
+    /// poller di AppModel come `portOpen`.
+    var healthOK = false
 
     /// Statistiche CPU/RAM del process group corrente (nil finché non c'è una seconda lettura).
     private(set) var stats: ProcessStats.Sample?
@@ -95,6 +98,8 @@ final class ServiceController: Identifiable {
             ready = readyMarkerSeen
         case .processAlive:
             ready = processAlive
+        case .httpHealth:
+            ready = healthOK
         }
         return ServiceStatus.derive(processAlive: processAlive, portOpen: ready,
                                     stopRequested: stopRequested, lastExitCode: lastExitCode)

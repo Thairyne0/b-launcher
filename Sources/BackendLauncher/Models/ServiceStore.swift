@@ -9,10 +9,16 @@ struct StoredReadiness: Codable, Hashable {
         case port
         case logMarker
         case processAlive
+        /// GET su `http://127.0.0.1:<port><path>` → 2xx = pronto. Richiede schema v2:
+        /// un'app vecchia non saprebbe decodificare questo `kind` (vedi `versionRequired`).
+        case httpHealth
     }
     var kind: Kind
     var port: UInt16?
     var marker: String?
+    /// Path del health check (solo `kind == .httpHealth`), es. "/health". Additivo:
+    /// assente nei file vecchi → `nil`.
+    var path: String? = nil
 }
 
 struct StoredService: Codable, Hashable {
@@ -131,7 +137,18 @@ final class ServiceStore {
 
     private let fileURL: URL
 
-    private static let currentVersion = 1
+    /// Massima versione di schema che QUESTA app sa leggere.
+    private static let currentVersion = 2
+
+    /// Versione minima che un lettore deve capire per questo contenuto: 2 solo se almeno un
+    /// servizio usa `httpHealth` (kind sconosciuto alle app v1), altrimenti 1 — così un file
+    /// che non usa feature nuove resta leggibile anche dopo un downgrade dell'app.
+    static func versionRequired(for projects: [StoredProject]) -> Int {
+        let usesHTTPHealth = projects.contains { project in
+            project.services.contains { $0.readiness.kind == .httpHealth }
+        }
+        return usesHTTPHealth ? 2 : 1
+    }
 
     static var defaultFileURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory,
@@ -556,7 +573,7 @@ final class ServiceStore {
 
     /// Scrittura atomica, JSON pretty-printed con chiavi ordinate per diff stabili.
     func save() {
-        let file = StoreFile(version: Self.currentVersion, projects: projects)
+        let file = StoreFile(version: Self.versionRequired(for: projects), projects: projects)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(file) else {
@@ -583,6 +600,9 @@ final class ServiceStore {
                 readiness = .logMarker(service.readiness.marker ?? "successfully started")
             case .processAlive:
                 readiness = .processAlive
+            case .httpHealth:
+                readiness = .httpHealth(port: service.readiness.port ?? 0,
+                                        path: service.readiness.path ?? "/health")
             }
             var config = ServiceConfig(
                 name: service.name,

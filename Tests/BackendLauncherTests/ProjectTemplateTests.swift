@@ -129,6 +129,20 @@ import Testing
         #expect(rebuilt.services.first?.envBadgeDisabled == true)
     }
 
+    @Test func httpHealthTemplateGetsVersion2AndRoundTrips() throws {
+        let root = URL(fileURLWithPath: "/Users/dev/proj")
+        var stored = service("healthy", "/Users/dev/proj/healthy")
+        stored.readiness = StoredReadiness(kind: .httpHealth, port: 9000, marker: nil, path: "/status")
+        let project = StoredProject(name: "P", services: [stored], profiles: [], infraCheck: nil)
+
+        let template = ProjectTemplateCodec.makeTemplate(from: project, root: root)
+        #expect(template.templateVersion == 2)
+
+        let decoded = try ProjectTemplateCodec.decode(try ProjectTemplateCodec.encode(template))
+        let rebuilt = try ProjectTemplateCodec.makeProject(from: decoded, root: root, nameOverride: nil)
+        #expect(rebuilt.services.first?.readiness == stored.readiness)
+    }
+
     @Test func commonRootComputesSharedParentDirectory() throws {
         let common = ProjectTemplateCodec.commonRoot(forServiceDirectories: [
             "/Users/dev/Skillera/SKILLGATEWAY-BE",

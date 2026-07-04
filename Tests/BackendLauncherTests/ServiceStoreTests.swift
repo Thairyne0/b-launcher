@@ -77,6 +77,34 @@ import Testing
         #expect(configs.first?.envBadgeDisabled == false)
     }
 
+    @Test func httpHealthBridgesToConfigAndBumpsStoreVersionTo2() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        var project = try #require(store.projects.first)
+        project.services.append(StoredService(
+            name: "healthy", directory: "/tmp/h", command: "true",
+            readiness: StoredReadiness(kind: .httpHealth, port: 8080, marker: nil, path: "/health")))
+        store.replaceProject(project)
+        store.save()
+
+        let config = try #require(store.serviceConfigs(for: store.projects[0]).last)
+        #expect(config.readiness == .httpHealth(port: 8080, path: "/health"))
+
+        // Il file scritto dichiara la versione minima che serve a leggerlo (2, feature
+        // nuova presente) e si ricarica intatto.
+        let decoded = try JSONDecoder().decode(StoreFile.self, from: Data(contentsOf: url))
+        #expect(decoded.version == 2)
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects == store.projects)
+    }
+
+    @Test func storeWithoutHttpHealthKeepsVersion1ForDowngradeFriendliness() throws {
+        let url = tempStoreURL()
+        _ = ServiceStore(fileURL: url)
+        let decoded = try JSONDecoder().decode(StoreFile.self, from: Data(contentsOf: url))
+        #expect(decoded.version == 1)
+    }
+
     @Test func futureVersionFileIsPreservedNotOverwritten() throws {
         // File scritto da una versione futura dell'app (es. v2 con schema incompatibile):
         // non va trattato come v1 né sovrascritto — va messo da parte per non perdere dati

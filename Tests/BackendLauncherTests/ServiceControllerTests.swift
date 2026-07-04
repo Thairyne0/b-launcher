@@ -108,6 +108,18 @@ private func fakeConfig(command: String) -> ServiceConfig {
         _ = await waitUntil { c.status == .stopped }
     }
 
+    @Test func httpHealthReadinessDrivesStatus() async {
+        let config = ServiceConfig(name: "fake", directory: "", command: "sleep 60",
+                                   readiness: .httpHealth(port: 1, path: "/health"))
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.start()
+        _ = await waitUntil { c.status == .starting }
+        c.healthOK = true
+        #expect(c.status == .running)
+        c.stop()
+        _ = await waitUntil { c.status == .stopped }
+    }
+
     @Test func crashInvokesOnCrashCallback() async {
         var captured: (String, Int32)?
         let c = ServiceController(config: fakeConfig(command: "exit 9"), cwd: "/tmp",
