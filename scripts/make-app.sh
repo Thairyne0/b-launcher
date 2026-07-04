@@ -50,6 +50,11 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 </plist>
 EOF
 
+# Path del clone da cui questa build proviene: l'app lo usa per il check aggiornamenti
+# in-app (git fetch nel clone) e per lanciare `make update` in Terminale. Iniettato a
+# build time — sul Mac di ogni collega punta automaticamente al SUO clone.
+/usr/libexec/PlistBuddy -c "Add :BLRepoPath string $(pwd)" "$APP/Contents/Info.plist"
+
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - "$APP"
 echo "OK: $APP"

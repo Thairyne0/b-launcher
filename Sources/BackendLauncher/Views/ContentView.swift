@@ -108,6 +108,21 @@ struct ContentView: View {
                 showWelcomeSheet = true
             }
         }
+        // Check aggiornamenti silenzioso all'avvio: solo se la build conosce il proprio
+        // clone (BLRepoPath). Fallimenti (offline, ecc.) silenziosi — il check esplicito
+        // con diagnostica vive nelle Impostazioni.
+        .task {
+            guard let repoPath = UpdateChecker.repoPath else { return }
+            let status = await Task.detached(priority: .utility) {
+                UpdateChecker.check(repoPath: repoPath)
+            }.value
+            if case .behind(let commits) = status {
+                ToastCenter.shared.show(
+                    commits == 1 ? "1 aggiornamento disponibile — ⌘, → Aggiornamenti"
+                                 : "\(commits) aggiornamenti disponibili — ⌘, → Aggiornamenti",
+                    systemImage: "arrow.down.circle.fill")
+            }
+        }
         .sheet(isPresented: $showWelcomeSheet, onDismiss: { hasSeenWelcome = true }) {
             WelcomeView {
                 showWelcomeSheet = false

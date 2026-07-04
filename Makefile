@@ -1,4 +1,4 @@
-.PHONY: build test app run dev clean install
+.PHONY: build test app run dev clean install update
 
 build:
 	swift build
@@ -18,6 +18,13 @@ install: app
 	cp -R "dist/Backend Launcher.app" "/Applications/Backend Launcher.app"
 	open "/Applications/Backend Launcher.app"
 	@echo "✓ Installato in /Applications"
+
+# Aggiorna dal repo e reinstalla: chiude l'app (se aperta — con backend attivi l'app
+# chiede conferma: meglio fermarli prima), pull fast-forward, rebuild e riapertura.
+update:
+	-osascript -e 'quit app "Backend Launcher"' 2>/dev/null || true
+	git pull --ff-only
+	$(MAKE) install
 
 dev:
 	swift run

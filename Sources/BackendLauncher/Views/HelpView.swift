@@ -219,7 +219,8 @@ enum HelpContent {
                     "Dimensione testo terminale (anche da ⌘= / ⌘−).",
                     "Aspetto: Sistema / Chiaro / Scuro.",
                     "Notifiche di crash on/off.",
-                    "Conferme di sicurezza: i popup di conferma di \"Avvia tutti\", \"Ferma tutti\" e \"Ferma progetto\" (toolbar) sono disattivabili singolarmente — disattivando, l'azione parte subito al click."
+                    "Conferme di sicurezza: i popup di conferma di \"Avvia tutti\", \"Ferma tutti\" e \"Ferma progetto\" (toolbar) sono disattivabili singolarmente — disattivando, l'azione parte subito al click.",
+                    "Aggiornamenti: all'avvio l'app controlla il clone git da cui è stata installata e mostra un toast se ci sono commit nuovi; da qui puoi controllare a mano e lanciare \"Aggiorna e riavvia…\" (esegue \"make update\" in Terminale: pull, rebuild, reinstallazione)."
                 ])
             ]
         ),

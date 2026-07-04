@@ -14,6 +14,9 @@ struct SettingsView: View {
     @State private var confirmStartAll: Bool = AppSettings.confirmStartAll
     @State private var confirmStopAll: Bool = AppSettings.confirmStopAll
     @State private var confirmStopProject: Bool = AppSettings.confirmStopProject
+    /// `nil` = nessun check ancora fatto in questa apertura delle Impostazioni.
+    @State private var updateStatus: UpdateChecker.Status?
+    @State private var checkingUpdates = false
 
     var body: some View {
         Form {
@@ -63,6 +66,32 @@ struct SettingsView: View {
                 Toggle("Notifiche di crash", isOn: $crashNotificationsEnabled)
             }
 
+            Section("Aggiornamenti") {
+                if let repoPath = UpdateChecker.repoPath {
+                    HStack {
+                        Button(checkingUpdates ? "Controllo…" : "Controlla aggiornamenti") {
+                            checkUpdates(repoPath: repoPath)
+                        }
+                        .disabled(checkingUpdates)
+                        Spacer()
+                        if case .behind = updateStatus {
+                            Button("Aggiorna e riavvia…") {
+                                UpdateChecker.runUpdateInTerminal(repoPath: repoPath)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
+                    updateStatusLabel
+                    Text("L'aggiornamento esegue \"make update\" in Terminale nel clone: pull, rebuild locale e reinstallazione (l'app si chiude e si riapre da sola).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Non disponibile: app avviata fuori dal bundle installato, oppure il clone da cui è stata buildata non esiste più.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Conferme di sicurezza") {
                 Toggle("Chiedi conferma per \"Avvia tutti\"", isOn: $confirmStartAll)
                 Toggle("Chiedi conferma per \"Ferma tutti\"", isOn: $confirmStopAll)
@@ -73,7 +102,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 500)
+        .frame(width: 420, height: 600)
         .onChange(of: pollIntervalSeconds) { _, newValue in
             AppSettings.pollIntervalSeconds = newValue
         }
@@ -101,6 +130,41 @@ struct SettingsView: View {
         }
         .onChange(of: confirmStopProject) { _, newValue in
             AppSettings.confirmStopProject = newValue
+        }
+    }
+
+    @ViewBuilder
+    private var updateStatusLabel: some View {
+        switch updateStatus {
+        case nil:
+            EmptyView()
+        case .upToDate:
+            Label("Sei all'ultima versione.", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .behind(let commits):
+            Label(commits == 1 ? "1 aggiornamento disponibile."
+                               : "\(commits) aggiornamenti disponibili.",
+                  systemImage: "arrow.down.circle.fill")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.orange)
+        case .unavailable(let reason):
+            Label(reason, systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// `check` spawna git e può toccare la rete: fuori dal MainActor.
+    private func checkUpdates(repoPath: String) {
+        checkingUpdates = true
+        updateStatus = nil
+        Task {
+            let status = await Task.detached(priority: .userInitiated) {
+                UpdateChecker.check(repoPath: repoPath)
+            }.value
+            updateStatus = status
+            checkingUpdates = false
         }
     }
 }

@@ -9,6 +9,10 @@ schema in fondo. Non serve essere gentili: più rompi, meglio è.
 2. L'app si apre da sola → leggi la schermata di benvenuto
 3. **Verifica**: icona nel Dock, icona nella barra menu in alto a destra
 
+Per aggiornare nei giorni successivi: `make update` nel clone (oppure, quando
+l'app ti mostra il toast "aggiornamenti disponibili": ⌘, → Aggiornamenti →
+"Aggiorna e riavvia…").
+
 Al primo avvio l'app è vuota: nessun progetto preconfigurato. La schermata di
 benvenuto ti indirizza su "＋ Aggiungi progetto" — il percorso più rapido è
 "Scansiona cartella…" sulla tua copia locale della repo.

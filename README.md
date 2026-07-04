@@ -24,7 +24,13 @@ make install
 `make install` compila l'app e la copia in `/Applications`, poi la apre. La build
 è locale → nessun problema di Gatekeeper/quarantena. Al primo avvio la schermata
 di benvenuto spiega come configurare i tuoi progetti (wizard, import template, o
-generazione automatica con Claude Code). Per aggiornare: `git pull && make install`.
+generazione automatica con Claude Code).
+
+Per aggiornare: **`make update`** nel clone — chiude l'app, fa `git pull
+--ff-only`, ricompila e reinstalla. In alternativa l'app stessa ti avvisa: al
+lancio controlla il clone da cui è stata buildata e mostra un toast se ci sono
+commit nuovi; da Impostazioni (⌘,) → Aggiornamenti puoi controllare a mano e
+lanciare "Aggiorna e riavvia…" (apre Terminale ed esegue `make update`).
 
 ## Uso (sviluppo)
 
