@@ -157,7 +157,8 @@ Derivati da fatti osservabili, nessuna macchina a stati nascosta:
 
 - ⚪️ fermo · 🟡 avvio… · 🟢 in esecuzione · 🟠 arresto…
 - 🔴 crash (con exit code) · 🔵 attivo fuori dal launcher (porta occupata da un
-  processo esterno: avvio disabilitato)
+  processo esterno: avvio disabilitato). La card mostra anche **chi** occupa la
+  porta (comando + pid, via `lsof`), così sai cosa fermare.
 
 Oltre allo stato: badge conteggio errori sulla card, metriche **CPU% / RAM (MB)**
 del process group mentre è in esecuzione, e indicatore **"cartella mancante"**
@@ -179,8 +180,9 @@ torna disponibile).
 ## Extra
 
 - **Menu bar**: icona con stato aggregato di tutti i servizi (pieno/mezzo
-  pieno/vuoto/errore), più un elenco testuale per servizio e azioni rapide
-  Avvia/Ferma tutti senza aprire la finestra principale.
+  pieno/vuoto/errore). I servizi sono raggruppati per progetto in un submenu con
+  Avvia/Ferma **di quel progetto**; più le azioni globali Avvia/Ferma/Riavvia
+  tutti, tutto senza aprire la finestra principale.
 - **Notifiche di crash**: notifica locale macOS al crash di un backend; il tap
   attiva l'app e apre direttamente il servizio interessato (deep-link).
 - **Palette comandi (⌘K)**: cerca e lancia qualunque azione (vai a un servizio,

@@ -272,8 +272,26 @@ struct MenuBarContent: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        ForEach(model.services) { service in
-            Text("\(emoji(for: service.status)) \(service.config.displayName) — \(service.status.label)")
+        // Servizi raggruppati per progetto: un submenu per progetto (con avvia/ferma solo
+        // di quel progetto) quando il progetto ha un nome; lista piatta per il caso legacy
+        // senza progetti (projectName vuoto).
+        ForEach(model.servicesByProject, id: \.projectName) { group in
+            if group.projectName.isEmpty {
+                ForEach(group.services) { service in
+                    Text("\(emoji(for: service.status)) \(service.config.displayName) — \(service.status.label)")
+                }
+            } else {
+                Menu("\(projectEmoji(group.services)) \(group.projectName)") {
+                    ForEach(group.services) { service in
+                        Text("\(emoji(for: service.status)) \(service.config.displayName) — \(service.status.label)")
+                    }
+                    Divider()
+                    Button("Avvia progetto") { model.startProject(named: group.projectName) }
+                        .disabled(group.services.allSatisfy { $0.processAlive })
+                    Button("Ferma progetto") { model.stopProject(named: group.projectName) }
+                        .disabled(!group.services.contains { $0.processAlive })
+                }
+            }
         }
         Divider()
         Button("Avvia tutti") { model.startAll() }
@@ -303,5 +321,15 @@ struct MenuBarContent: View {
         case .crashed: return "🔴"
         case .external: return "🔵"
         }
+    }
+
+    /// Emoji riassuntiva di un progetto per il titolo del submenu: verde se almeno uno gira,
+    /// rosso se almeno uno è crashato, altrimenti grigio.
+    private func projectEmoji(_ services: [ServiceController]) -> String {
+        if services.contains(where: { if case .crashed = $0.status { return true }; return false }) {
+            return "🔴"
+        }
+        if services.contains(where: { $0.processAlive }) { return "🟢" }
+        return "⚪️"
     }
 }

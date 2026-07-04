@@ -152,6 +152,29 @@ import Testing
         #expect(ids == ["ProjA/svc", "ProjB/svc"])
     }
 
+    @Test func servicesByProjectGroupsPreservingOrder() throws {
+        let store = try makeTwoProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+
+        let grouped = model.servicesByProject
+        #expect(grouped.map(\.projectName) == ["ProjA", "ProjB"])
+        #expect(grouped.allSatisfy { $0.services.count == 1 })
+        #expect(grouped[0].services[0].id == "ProjA/svc")
+    }
+
+    @Test func servicesByProjectHandlesLegacyEmptyProjectName() {
+        // Init legacy (nessuno store): tutti i servizi hanno projectName "" → un solo gruppo.
+        let model = AppModel(configs: [
+            ServiceConfig(name: "a", directory: "", port: 1),
+            ServiceConfig(name: "b", directory: "", port: 2),
+        ], pollingEnabled: false, crashNotificationsEnabled: false)
+
+        let grouped = model.servicesByProject
+        #expect(grouped.count == 1)
+        #expect(grouped[0].projectName == "")
+        #expect(grouped[0].services.count == 2)
+    }
+
     @Test func legacyConfigWithEmptyProjectNameKeepsIDEqualToName() {
         let config = ServiceConfig(name: "gateway", directory: "", port: 4000)
         #expect(config.projectName == "")

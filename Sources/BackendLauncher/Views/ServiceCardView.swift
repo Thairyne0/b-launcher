@@ -6,6 +6,9 @@ struct ServiceCardView: View {
     var controller: ServiceController
     @Binding var showTerminal: Bool
     @State private var showEnvSheet = false
+    /// Chi occupa la porta quando il servizio è "esterno" (blu): risolto via `lsof` fuori
+    /// dal MainActor. `nil` = non ancora risolto o non applicabile.
+    @State private var portOwner: String?
 
     private var readinessCaption: String {
         switch controller.config.readiness {
@@ -90,6 +93,14 @@ struct ServiceCardView: View {
                             .help(controller.config.workingDirectory.path)
                     }
 
+                    if controller.status == .external, let portOwner {
+                        Label("porta occupata da: \(portOwner)", systemImage: "person.crop.circle.badge.exclamationmark")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.blue)
+                            .help("Un processo esterno al launcher tiene la porta \(controller.config.port.map(String.init) ?? "?"). Fermalo per poter avviare questo backend.")
+                            .textSelection(.enabled)
+                    }
+
                     if envFileIsMissing {
                         Button {
                             showEnvSheet = true
@@ -159,6 +170,17 @@ struct ServiceCardView: View {
         .sheet(isPresented: $showEnvSheet) {
             EnvCreateSheet(serviceName: controller.config.displayName,
                            directory: controller.config.workingDirectory)
+        }
+        // Risolvi il proprietario della porta quando (e solo quando) il servizio è esterno.
+        // `lsof` è bloccante: fuori dal MainActor. Si ricalcola a ogni transizione di stato.
+        .task(id: controller.status) {
+            guard controller.status == .external, let port = controller.config.port else {
+                portOwner = nil
+                return
+            }
+            portOwner = await Task.detached(priority: .utility) {
+                PortOwner.describe(port: port)
+            }.value
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
         .overlay {

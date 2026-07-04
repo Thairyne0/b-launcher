@@ -197,7 +197,7 @@ enum HelpContent {
             title: "Menu bar e notifiche",
             symbolName: "menubar.rectangle",
             blocks: [
-                .paragraph("Un'icona nella barra dei menu mostra lo stato aggregato di tutti i backend: piena quando sono tutti attivi, mezza quando solo alcuni lo sono, punto esclamativo in caso di crash. Da lì è disponibile anche un menu rapido con le azioni principali."),
+                .paragraph("Un'icona nella barra dei menu mostra lo stato aggregato di tutti i backend: piena quando sono tutti attivi, mezza quando solo alcuni lo sono, punto esclamativo in caso di crash. Il menu raggruppa i backend per progetto (un submenu per progetto, con Avvia/Ferma solo di quel progetto) e offre le azioni globali Avvia/Ferma/Riavvia tutti — tutto senza aprire la finestra."),
                 .bullets([
                     "Chiudere la finestra NON chiude l'app.",
                     "⌘Q chiude l'app, con conferma se ci sono backend attivi.",
@@ -233,7 +233,7 @@ enum HelpContent {
                 .paragraph("I log si trovano in ~/Library/Logs/BackendLauncher."),
                 .subheading("Problemi comuni"),
                 .bullets([
-                    "Servizio \"esterno\" — la porta è occupata da un processo esterno: chiudi l'altro processo.",
+                    "Servizio \"esterno\" (blu) — la porta è occupata da un processo esterno al launcher. La card mostra chi la occupa (comando e pid): chiudi quel processo per poter avviare il backend.",
                     "\"Cartella mancante\" — il percorso non esiste su questo Mac: usa \"Cambia cartella radice\" o \"Modifica\".",
                     "\".env mancante\" — la cartella del backend non contiene il file .env: clicca il badge sulla card per crearlo incollando il contenuto.",
                     "Spia infrastruttura rossa — il broker/DB del progetto è giù: i backend partono ma non comunicano.",

@@ -193,6 +193,20 @@ final class AppModel {
         revealRequestCount += 1
     }
 
+    /// Servizi raggruppati per progetto, preservando l'ordine di prima apparizione del
+    /// `projectName` in `services` (che rispecchia l'ordine dei progetti nello store).
+    /// Usato dalla menu bar per offrire avvia/ferma per singolo progetto.
+    var servicesByProject: [(projectName: String, services: [ServiceController])] {
+        var order: [String] = []
+        var buckets: [String: [ServiceController]] = [:]
+        for service in services {
+            let key = service.config.projectName
+            if buckets[key] == nil { order.append(key) }
+            buckets[key, default: []].append(service)
+        }
+        return order.map { (projectName: $0, services: buckets[$0] ?? []) }
+    }
+
     var anyRunning: Bool { services.contains { $0.processAlive } }
     var allExpanded: Bool { expandedServices.count == services.count }
 
