@@ -18,8 +18,10 @@ enum ReadinessProbe: Hashable {
     case httpHealth(port: UInt16, path: String)
 }
 
-/// Configurazione statica dei backend Skillera.
-/// Per aggiungere/togliere un servizio o cambiare il path del progetto si edita SOLO questo file.
+/// Config runtime di un backend (bridge da `StoredService` via `ServiceStore.serviceConfigs`).
+/// Le costanti statiche `legacyAll`/`legacyProfiles`/`projectRoot` in fondo sono l'ex
+/// configurazione hardcoded "Skillera": oggi servono SOLO come fixture dei test legacy
+/// (l'app non le usa più — il primo avvio parte vuoto).
 struct ServiceConfig: Identifiable, Hashable {
     let name: String          // nome breve (pm2-style)
     let directory: String     // sottodirectory dentro projectRoot (modalità legacy)

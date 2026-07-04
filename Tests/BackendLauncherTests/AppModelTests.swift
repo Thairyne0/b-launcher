@@ -125,12 +125,10 @@ import Testing
             .appendingPathComponent("services.json")
     }
 
-    /// Store con due progetti fittizi, comandi "sleep" innocui, nessuna migrazione Skillera
-    /// coinvolta (progetti costruiti da zero via addProject/addService).
+    /// Store con due progetti fittizi, comandi "sleep" innocui (un'installazione nuova
+    /// parte vuota, quindi i progetti si costruiscono da zero via addProject/addService).
     private func makeTwoProjectStore() throws -> ServiceStore {
         let store = ServiceStore(fileURL: tempStoreURL())
-        // Rimuovi il progetto Skillera migrato di default: i test qui vogliono un fixture pulito.
-        store.removeProject(id: "Skillera")
         try store.addProject(named: "ProjA")
         try store.addProject(named: "ProjB")
         try store.addService(
@@ -419,7 +417,9 @@ import Testing
     /// (tracciato: `templateSync` valorizzato), su una cartella temporanea reale — necessario
     /// perché `checkTemplateSync` rilegge davvero il file dal disco.
     private func makeTrackedProjectStore() throws -> (store: ServiceStore, projectRoot: URL, templateFileURL: URL, originalData: Data) {
-        let store = ServiceStore(fileURL: tempStoreURL())
+        // Fixture Skillera seminata ad hoc (l'init nudo parte vuoto): serve solo come
+        // sorgente del template da esportare, poi viene rimossa.
+        let store = ServiceStore.seededWithSkillera(fileURL: tempStoreURL())
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
         store.removeProject(id: "Skillera")

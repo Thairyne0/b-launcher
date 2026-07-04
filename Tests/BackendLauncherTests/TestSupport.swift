@@ -61,6 +61,52 @@ func makeTCPListenerV6() -> (fd: Int32, port: UInt16) {
     return (fd, UInt16(bigEndian: bound.sin6_port))
 }
 
+import Testing
+@testable import BackendLauncher
+
+extension ServiceStore {
+    /// Fixture: store con il progetto "Skillera" pre-popolato — l'ex contenuto della
+    /// migrazione legacy del primo avvio (rimossa il 2026-07-04: un'installazione nuova
+    /// parte vuota). Decine di test di mutazione/bridge/template sono scritti contro
+    /// questo progetto; la fixture ne preserva forma e valori esatti.
+    @MainActor
+    static func seededWithSkillera(fileURL: URL) -> ServiceStore {
+        let store = ServiceStore(fileURL: fileURL)
+        let services = ServiceConfig.legacyAll.map { config -> StoredService in
+            let readiness: StoredReadiness
+            if let port = config.port {
+                readiness = StoredReadiness(kind: .port, port: port, marker: nil)
+            } else {
+                readiness = StoredReadiness(kind: .logMarker, port: nil, marker: "successfully started")
+            }
+            return StoredService(
+                name: config.name,
+                directory: ServiceConfig.projectRoot.appendingPathComponent(config.directory).path,
+                command: config.command,
+                readiness: readiness
+            )
+        }
+        let profiles = ServiceConfig.legacyProfiles.map {
+            StoredProfile(name: $0.name, serviceNames: $0.serviceNames)
+        }
+        let project = StoredProject(
+            name: "Skillera",
+            services: services,
+            profiles: profiles,
+            infraCheck: StoredInfraCheck(label: "NATS", port: ServiceConfig.natsPort)
+        )
+        // Append diretto + save, come faceva la migrazione (addProject non basta:
+        // vogliamo servizi/profili/infra già popolati in un colpo).
+        store.replaceProject(project)  // no-op se assente…
+        if !store.projects.contains(where: { $0.id == project.id }) {
+            try? store.addProject(named: project.name)
+            store.replaceProject(project)
+        }
+        store.save()
+        return store
+    }
+}
+
 /// Mini responder HTTP su 127.0.0.1 (porta dal kernel) per i test del health check:
 /// accetta connessioni in un thread dedicato e risponde sempre con lo status dato e body
 /// vuoto. Chiudere con `close(fd)` — l'accept fallisce e il thread esce da solo.

@@ -11,33 +11,26 @@ import Testing
             .appendingPathComponent("services.json")
     }
 
-    @Test func migrationCreatesSkilleraWithSixServices() throws {
+    @Test func freshInstallStartsEmptyWithoutHardcodedLeftovers() throws {
+        // Un'installazione nuova (nessun services.json) deve partire PULITA: zero
+        // progetti, niente "Skillera" hardcoded coi path del Mac dell'autore —
+        // l'onboarding è la schermata di benvenuto, non un progetto rotto.
         let url = tempStoreURL()
         #expect(!FileManager.default.fileExists(atPath: url.path))
 
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore(fileURL: url)  // init nudo: qui testiamo il primo avvio
 
-        #expect(store.projects.count == 1)
-        let project = try #require(store.projects.first)
-        #expect(project.name == "Skillera")
-        #expect(project.services.count == 6)
-
-        let portReadinessCount = project.services.filter { $0.readiness.kind == .port }.count
-        let markerReadinessCount = project.services.filter { $0.readiness.kind == .logMarker }.count
-        #expect(portReadinessCount == 2)
-        #expect(markerReadinessCount == 4)
-
-        #expect(project.profiles.map(\.name) == ["Minimo (gateway + id)", "Tutti"])
-        #expect(project.infraCheck?.label == "NATS")
-        #expect(project.infraCheck?.port == 4222)
-
-        // Il file deve essere stato scritto su disco dopo la migrazione.
+        #expect(store.projects.isEmpty)
+        // Il file vuoto viene comunque scritto (v1: nessuna feature v2 in uso).
         #expect(FileManager.default.fileExists(atPath: url.path))
+        let decoded = try JSONDecoder().decode(StoreFile.self, from: Data(contentsOf: url))
+        #expect(decoded.version == 1)
+        #expect(decoded.projects.isEmpty)
     }
 
     @Test func roundTripPersistence() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         var project = try #require(store.projects.first)
 
         let extra = StoredService(
@@ -58,7 +51,7 @@ import Testing
 
     @Test func envBadgeDisabledPersistsAndBridgesToConfig() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         var project = try #require(store.projects.first)
         project.services.append(StoredService(
             name: "no-env", directory: "/tmp/no-env", command: "true",
@@ -79,7 +72,7 @@ import Testing
 
     @Test func httpHealthBridgesToConfigAndBumpsStoreVersionTo2() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         var project = try #require(store.projects.first)
         project.services.append(StoredService(
             name: "healthy", directory: "/tmp/h", command: "true",
@@ -122,16 +115,15 @@ import Testing
         let data = try JSONEncoder().encode(futureFile)
         try data.write(to: url)
 
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore(fileURL: url)  // init nudo: testa il fallback
 
         let futureVersionURL = url.appendingPathExtension("futureversion")
         #expect(FileManager.default.fileExists(atPath: futureVersionURL.path))
         let preserved = try Data(contentsOf: futureVersionURL)
         #expect(preserved == data)
 
-        // Lo store corrente ricade sulla migrazione, non sul contenuto v99.
-        #expect(store.projects.count == 1)
-        #expect(store.projects.first?.name == "Skillera")
+        // Lo store corrente ricade sullo stato vuoto, non sul contenuto v99.
+        #expect(store.projects.isEmpty)
     }
 
     @Test func futureVersionPreservationFailureSkipsSaveAndKeepsOriginalIntact() throws {
@@ -165,35 +157,33 @@ import Testing
             try? FileManager.default.removeItem(at: dir)
         }
 
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore(fileURL: url)  // init nudo: testa il fallback
 
-        // In memoria per questa sessione, ricade comunque sulla migrazione (comportamento
+        // In memoria per questa sessione ricade comunque sullo stato vuoto (comportamento
         // in-process invariato: l'utente può continuare a usare l'app).
-        #expect(store.projects.count == 1)
-        #expect(store.projects.first?.name == "Skillera")
+        #expect(store.projects.isEmpty)
 
         // MA il file originale su disco non deve essere stato toccato: niente save().
         let onDiskAfter = try Data(contentsOf: url)
         #expect(onDiskAfter == originalData)
     }
 
-    @Test func corruptFileFallsBackToMigration() throws {
+    @Test func corruptFileFallsBackToEmptyState() throws {
         let url = tempStoreURL()
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         try Data("not valid json { { {".utf8).write(to: url)
 
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore(fileURL: url)  // init nudo: testa il fallback
 
         let corruptURL = url.appendingPathExtension("corrupt")
         #expect(FileManager.default.fileExists(atPath: corruptURL.path))
-        #expect(store.projects.count == 1)
-        #expect(store.projects.first?.name == "Skillera")
+        #expect(store.projects.isEmpty)
     }
 
     @Test func serviceConfigsBridge() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let project = try #require(store.projects.first)
 
         let configs = store.serviceConfigs(for: project)
@@ -214,7 +204,7 @@ import Testing
         // Il marker persistito su disco deve sopravvivere al bridge invariato, non essere
         // forzato all'hardcoded "successfully started".
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         var project = try #require(store.projects.first)
 
         let custom = StoredService(
@@ -233,7 +223,7 @@ import Testing
 
     @Test func serviceConfigsBridgeSetsProjectNameForNamespacing() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let project = try #require(store.projects.first)
 
         let configs = store.serviceConfigs(for: project)
@@ -246,7 +236,7 @@ import Testing
 
     @Test func addProjectAppendsAndPersists() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         try store.addProject(named: "NuovoProgetto")
 
         #expect(store.projects.count == 2)
@@ -260,14 +250,14 @@ import Testing
 
     @Test func addProjectTrimsWhitespace() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         try store.addProject(named: "  Spazi  ")
         #expect(store.projects.last?.name == "Spazi")
     }
 
     @Test func addProjectRejectsEmptyName() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         #expect(throws: StoreError.self) {
             try store.addProject(named: "   ")
         }
@@ -276,7 +266,7 @@ import Testing
 
     @Test func addProjectRejectsCaseInsensitiveDuplicate() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         #expect(throws: StoreError.self) {
             try store.addProject(named: "skillera")
         }
@@ -285,7 +275,7 @@ import Testing
 
     @Test func removeProjectDeletesAndPersists() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         try store.addProject(named: "Secondo")
         store.removeProject(id: "Skillera")
 
@@ -299,14 +289,14 @@ import Testing
 
     @Test func removeProjectNotFoundIsNoOp() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         store.removeProject(id: "non-esiste")
         #expect(store.projects.count == 1)
     }
 
     @Test func addServiceAppendsAndPersists() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let service = StoredService(name: "newsvc", directory: "/tmp/newsvc",
                                     command: "npm run start:dev",
                                     readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil))
@@ -321,7 +311,7 @@ import Testing
 
     @Test func addServiceRejectsCaseInsensitiveDuplicateWithinProject() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let service = StoredService(name: "GATEWAY", directory: "/tmp/x", command: "npm run start:dev",
                                     readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil))
         #expect(throws: StoreError.self) {
@@ -332,7 +322,7 @@ import Testing
 
     @Test func addServiceThrowsWhenProjectNotFound() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let service = StoredService(name: "x", directory: "/tmp/x", command: "npm run start:dev",
                                     readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil))
         #expect(throws: StoreError.self) {
@@ -342,7 +332,7 @@ import Testing
 
     @Test func updateServiceRenamesSuccessfully() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let original = try #require(store.projects.first?.services.first { $0.name == "atlas" })
         var renamed = original
         renamed.name = "atlas2"
@@ -357,7 +347,7 @@ import Testing
 
     @Test func updateServiceRenameCollisionRejected() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let original = try #require(store.projects.first?.services.first { $0.name == "atlas" })
         var renamed = original
         renamed.name = "gateway"  // collide con un servizio esistente
@@ -370,7 +360,7 @@ import Testing
 
     @Test func updateServiceKeepingSameNameSucceeds() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let original = try #require(store.projects.first?.services.first { $0.name == "atlas" })
         var updated = original
         updated.command = "npm run start:prod"
@@ -380,7 +370,7 @@ import Testing
 
     @Test func removeServiceDeletesAndPersists() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         store.removeService(named: "atlas", fromProject: "Skillera")
 
         #expect(store.projects.first?.services.count == 5)
@@ -392,7 +382,7 @@ import Testing
 
     @Test func removeServiceNotFoundIsNoOp() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         store.removeService(named: "non-esiste", fromProject: "Skillera")
         #expect(store.projects.first?.services.count == 6)
     }
@@ -401,7 +391,7 @@ import Testing
 
     @Test func exportUnknownProjectThrows() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         #expect(throws: StoreError.self) {
             try store.exportTemplate(projectID: "non-esiste", root: URL(fileURLWithPath: "/tmp"))
         }
@@ -409,7 +399,7 @@ import Testing
 
     @Test func exportTemplateProducesDecodableData() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let root = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
 
         let data = try store.exportTemplate(projectID: "Skillera", root: root)
@@ -422,7 +412,7 @@ import Testing
 
     @Test func importTemplatePersistsAndReloadSeesProject() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
 
@@ -443,7 +433,7 @@ import Testing
 
     @Test func importCollisionThrowsDuplicate() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
 
@@ -458,7 +448,7 @@ import Testing
 
     @Test func renameProjectRenamesAndPersists() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         try store.renameProject(id: "Skillera", to: "Skillera2")
 
         #expect(store.projects.count == 1)
@@ -471,7 +461,7 @@ import Testing
 
     @Test func renameProjectRejectsDuplicateCaseInsensitive() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         try store.addProject(named: "Secondo")
         #expect(throws: StoreError.self) {
             try store.renameProject(id: "Secondo", to: "skillera")
@@ -481,7 +471,7 @@ import Testing
 
     @Test func renameProjectThrowsWhenMissing() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         #expect(throws: StoreError.self) {
             try store.renameProject(id: "non-esiste", to: "Nuovo")
         }
@@ -489,7 +479,7 @@ import Testing
 
     @Test func renameProjectRejectsEmptyName() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         #expect(throws: StoreError.self) {
             try store.renameProject(id: "Skillera", to: "   ")
         }
@@ -500,7 +490,7 @@ import Testing
 
     @Test func rebaseProjectRebasesDirsUnderCommonRoot() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         // Skillera migrato: tutti i servizi condividono la stessa root comune (projectRoot).
         let before = try #require(store.projects.first)
         let oldCommonRoot = try #require(ProjectTemplateCodec.commonRoot(
@@ -523,7 +513,7 @@ import Testing
 
     @Test func rebaseProjectLeavesDirOutsideCommonRootUnchanged() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         var project = try #require(store.projects.first)
         // Aggiungi un servizio con directory completamente fuori dalla root comune degli altri.
         project.services.append(StoredService(
@@ -545,7 +535,7 @@ import Testing
 
     @Test func rebaseProjectThrowsWhenMissing() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         #expect(throws: StoreError.self) {
             try store.rebaseProject(id: "non-esiste", ontoRoot: URL(fileURLWithPath: "/tmp"))
         }
@@ -555,7 +545,7 @@ import Testing
 
     @Test func updateInfraCheckSetsAndPersists() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let newCheck = StoredInfraCheck(label: "Redis", port: 6379)
         try store.updateInfraCheck(projectID: "Skillera", infraCheck: newCheck)
 
@@ -567,7 +557,7 @@ import Testing
 
     @Test func updateInfraCheckRemovesWithNil() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         try store.updateInfraCheck(projectID: "Skillera", infraCheck: nil)
 
         #expect(store.projects.first?.infraCheck == nil)
@@ -578,7 +568,7 @@ import Testing
 
     @Test func updateInfraCheckThrowsWhenProjectMissing() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         #expect(throws: StoreError.self) {
             try store.updateInfraCheck(projectID: "non-esiste", infraCheck: nil)
         }
@@ -588,7 +578,7 @@ import Testing
 
     @Test func updateProfilesSetsAndPersists() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let newProfiles = [
             StoredProfile(name: "Solo gateway", serviceNames: ["gateway"]),
             StoredProfile(name: "Tutti", serviceNames: ["gateway", "atlas"]),
@@ -603,7 +593,7 @@ import Testing
 
     @Test func updateProfilesRejectsUnknownService() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let badProfiles = [StoredProfile(name: "Bad", serviceNames: ["nonexistent-service"])]
         #expect(throws: StoreError.self) {
             try store.updateProfiles(projectID: "Skillera", profiles: badProfiles)
@@ -614,7 +604,7 @@ import Testing
 
     @Test func updateProfilesRejectsDuplicateProfileNameCaseInsensitive() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let dupProfiles = [
             StoredProfile(name: "Tutti", serviceNames: ["gateway"]),
             StoredProfile(name: "tutti", serviceNames: ["atlas"]),
@@ -626,7 +616,7 @@ import Testing
 
     @Test func updateProfilesThrowsWhenProjectMissing() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         #expect(throws: StoreError.self) {
             try store.updateProfiles(projectID: "non-esiste", profiles: [])
         }
@@ -636,7 +626,7 @@ import Testing
 
     @Test func accentColorHexAndSymbolNameRoundTripThroughSaveAndReload() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         var project = try #require(store.projects.first)
         project.accentColorHex = "#4F8EF7"
         project.services[0].symbolName = "bolt.fill"
@@ -677,7 +667,7 @@ import Testing
         """
         try Data(oldJSON.utf8).write(to: url)
 
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore(fileURL: url)  // init nudo: testa la decodifica del file
 
         #expect(store.projects.count == 1)
         let project = try #require(store.projects.first)
@@ -692,7 +682,7 @@ import Testing
 
     @Test func serviceConfigsBridgePopulatesAccentColorAndSymbolName() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         var project = try #require(store.projects.first)
         project.accentColorHex = "#FF0000"
         project.services[0].symbolName = "network"
@@ -713,7 +703,7 @@ import Testing
 
     @Test func updateProjectAccentColorSetsAndPersists() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         try store.updateProjectAccentColor(projectID: "Skillera", hex: "#4F8EF7")
 
         #expect(store.projects.first?.accentColorHex == "#4F8EF7")
@@ -724,7 +714,7 @@ import Testing
 
     @Test func updateProjectAccentColorRemovesWithNil() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         try store.updateProjectAccentColor(projectID: "Skillera", hex: "#4F8EF7")
         try store.updateProjectAccentColor(projectID: "Skillera", hex: nil)
 
@@ -736,7 +726,7 @@ import Testing
 
     @Test func updateProjectAccentColorThrowsWhenProjectMissing() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         #expect(throws: StoreError.self) {
             try store.updateProjectAccentColor(projectID: "non-esiste", hex: "#4F8EF7")
         }
@@ -744,7 +734,7 @@ import Testing
 
     @Test func importWithOverrideNameSucceeds() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
 
@@ -770,7 +760,7 @@ import Testing
 
     @Test func importTemplateWithSourceFileInsideRootSetsTemplateSync() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
         store.removeProject(id: "Skillera")
@@ -788,7 +778,7 @@ import Testing
 
     @Test func importTemplateWithSourceFileOutsideRootLeavesTemplateSyncNil() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
         store.removeProject(id: "Skillera")
@@ -806,7 +796,7 @@ import Testing
 
     @Test func importTemplateWithoutSourceFileLeavesTemplateSyncNil() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
         store.removeProject(id: "Skillera")
@@ -819,21 +809,21 @@ import Testing
 
     @Test func checkTemplateSyncReturnsNotTrackedWhenNoSyncInfo() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
 
         #expect(store.checkTemplateSync(projectID: "Skillera") == .notTracked)
     }
 
     @Test func checkTemplateSyncReturnsNotTrackedWhenProjectMissing() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
 
         #expect(store.checkTemplateSync(projectID: "non-esiste") == .notTracked)
     }
 
     @Test func checkTemplateSyncReturnsUpToDateWhenHashMatches() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
         store.removeProject(id: "Skillera")
@@ -848,7 +838,7 @@ import Testing
 
     @Test func checkTemplateSyncReturnsChangedWhenFileContentDiffers() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
         store.removeProject(id: "Skillera")
@@ -870,7 +860,7 @@ import Testing
 
     @Test func checkTemplateSyncReturnsFileMissingWhenFileDeleted() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
         store.removeProject(id: "Skillera")
@@ -887,7 +877,7 @@ import Testing
 
     @Test func syncProjectFromTemplateReplacesServicesKeepsNameAndColorUpdatesHash() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
         store.removeProject(id: "Skillera")
@@ -927,7 +917,7 @@ import Testing
 
     @Test func syncProjectFromTemplateThrowsWhenNotTracked() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
 
         #expect(throws: ServiceStore.TemplateSyncError.self) {
             try store.syncProjectFromTemplate(projectID: "Skillera")
@@ -936,7 +926,7 @@ import Testing
 
     @Test func syncProjectFromTemplateThrowsWhenProjectMissing() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
 
         #expect(throws: StoreError.self) {
             try store.syncProjectFromTemplate(projectID: "non-esiste")
@@ -945,7 +935,7 @@ import Testing
 
     @Test func syncProjectFromTemplateThrowsWhenFileMissing() throws {
         let url = tempStoreURL()
-        let store = ServiceStore(fileURL: url)
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
         let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
         let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
         store.removeProject(id: "Skillera")

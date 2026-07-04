@@ -218,10 +218,13 @@ torna disponibile).
 
 Progetti e servizi sono persistiti in
 `~/Library/Application Support/BackendLauncher/services.json`, con un campo
-`version` nello schema. Al primo avvio senza file su disco, l'app migra
-automaticamente la vecchia configurazione hardcoded v1 (i sei backend Skillera)
-in un progetto. Un file scritto da una versione futura dell'app viene preservato
-as-is (rinominato `.futureversion`) invece di essere sovrascritto.
+`version` nello schema. Al primo avvio senza file su disco l'app parte vuota:
+zero progetti, si comincia dalla schermata di benvenuto e da "＋ Aggiungi
+progetto" (wizard, scansione cartella, import template o Claude Code). Il file
+dichiara la versione minima necessaria a leggerlo (resta v1 finché non usi
+feature v2 come il health check HTTP). Un file scritto da una versione futura
+dell'app viene preservato as-is (rinominato `.futureversion`) invece di essere
+sovrascritto.
 
 ## Rollback
 

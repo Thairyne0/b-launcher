@@ -9,16 +9,16 @@ schema in fondo. Non serve essere gentili: più rompi, meglio è.
 2. L'app si apre da sola → leggi la schermata di benvenuto
 3. **Verifica**: icona nel Dock, icona nella barra menu in alto a destra
 
-Al primo avvio troverai un progetto "Skillera" con percorsi che sul tuo Mac non
-esistono: è il progetto di esempio migrato. Il banner arancione ti offre due
-uscite — provale entrambe nei test sotto.
+Al primo avvio l'app è vuota: nessun progetto preconfigurato. La schermata di
+benvenuto ti indirizza su "＋ Aggiungi progetto" — il percorso più rapido è
+"Scansiona cartella…" sulla tua copia locale della repo.
 
 ## Scenari da testare
 
 ### 1. Onboarding (il tuo primo quarto d'ora, il più prezioso)
 - [ ] Il benvenuto è chiaro? Sapevi cosa fare dopo averlo chiuso?
-- [ ] Progetto Skillera rotto: hai capito da solo come sistemarlo o eliminarlo?
-- [ ] "Cambia cartella radice…" puntando alla tua copia di SkillLocale: i 6 backend si sistemano tutti?
+- [ ] Partendo da app vuota, sei arrivato da solo a un progetto funzionante (scansione o wizard)?
+- [ ] Se un backend clonato non ha `.env`: badge ".env mancante" sulla card — incolla il contenuto (o parti dal precompilato `.env.example`) e verifica che il file venga creato e il backend parta.
 
 ### 2. Il tuo progetto reale
 - [ ] "＋ Aggiungi progetto → Scansiona cartella…" sulla tua repo: trova i backend giusti? Porte giuste?
@@ -42,6 +42,13 @@ uscite — provale entrambe nei test sotto.
 ### 5. Impostazioni & tema
 - [ ] ⌘, → cambia Aspetto (Chiaro/Scuro): tutto leggibile in entrambi?
 - [ ] ⌘= / ⌘− nel terminale
+- [ ] Conferme di sicurezza: "Avvia tutti"/"Ferma tutti"/"Ferma progetto" chiedono conferma; disattivale da ⌘, e verifica che agiscano subito
+
+### 6. Novità recenti
+- [ ] Sulla pagina di un progetto: "Avvia progetto" (bottone blu) avvia solo quel progetto, "Avvia tutti" tutto
+- [ ] Backend con readiness "Health check HTTP" (porta + /health): diventa verde solo quando l'endpoint risponde 2xx?
+- [ ] Scanner su repo Python/Spring/Laravel o con docker-compose: propone comandi sensati?
+- [ ] Backend che non usa .env: toggle nel form → badge sparito?
 
 ## Come segnalare
 

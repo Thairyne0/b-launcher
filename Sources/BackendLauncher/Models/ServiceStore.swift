@@ -127,9 +127,11 @@ enum StoreError: LocalizedError, Equatable {
     }
 }
 
-/// Store persistente dei progetti/servizi. Sostituisce gradualmente la configurazione
-/// statica di `ServiceConfig`: al primo avvio (nessun file su disco) migra automaticamente
-/// la configurazione legacy "Skillera" hardcoded, poi vive interamente su disco.
+/// Store persistente dei progetti/servizi, interamente su disco. Un'installazione nuova
+/// (nessun `services.json`) parte VUOTA: l'onboarding è la schermata di benvenuto +
+/// "Aggiungi progetto", non contenuto hardcoded. (Fino al 2026-07-04 il primo avvio
+/// migrava un progetto "Skillera" coi path del Mac dell'autore — rimosso: su qualsiasi
+/// altra macchina era solo un progetto rotto da eliminare.)
 @MainActor
 @Observable
 final class ServiceStore {
@@ -208,7 +210,7 @@ final class ServiceStore {
             }
         }
 
-        self.projects = [Self.migrateFromLegacy()]
+        self.projects = []
         if preservationFailed {
             // Store solo in memoria per questa sessione: il file originale resta
             // intatto sul disco per un retry o un intervento manuale.
@@ -216,35 +218,6 @@ final class ServiceStore {
         } else {
             save()
         }
-    }
-
-    /// Costruisce il progetto "Skillera" dalla configurazione legacy hardcoded.
-    private static func migrateFromLegacy() -> StoredProject {
-        let services = ServiceConfig.legacyAll.map { config -> StoredService in
-            let readiness: StoredReadiness
-            if let port = config.port {
-                readiness = StoredReadiness(kind: .port, port: port, marker: nil)
-            } else {
-                readiness = StoredReadiness(kind: .logMarker, port: nil, marker: "successfully started")
-            }
-            return StoredService(
-                name: config.name,
-                directory: ServiceConfig.projectRoot.appendingPathComponent(config.directory).path,
-                command: config.command,
-                readiness: readiness
-            )
-        }
-
-        let profiles = ServiceConfig.legacyProfiles.map {
-            StoredProfile(name: $0.name, serviceNames: $0.serviceNames)
-        }
-
-        return StoredProject(
-            name: "Skillera",
-            services: services,
-            profiles: profiles,
-            infraCheck: StoredInfraCheck(label: "NATS", port: ServiceConfig.natsPort)
-        )
     }
 
     /// Primo progetto: interfaccia utente a singolo progetto per ora (Phase A).
