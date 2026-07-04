@@ -5,6 +5,7 @@ import SwiftUI
 struct ServiceCardView: View {
     var controller: ServiceController
     @Binding var showTerminal: Bool
+    @State private var showEnvSheet = false
 
     private var readinessCaption: String {
         switch controller.config.readiness {
@@ -19,6 +20,13 @@ struct ServiceCardView: View {
     /// aggiorna da sola alla prossima ridisegno se la cartella compare/sparisce.
     private var directoryIsMissing: Bool {
         !FileManager.default.fileExists(atPath: controller.config.workingDirectory.path)
+    }
+
+    /// Vero se la working directory esiste ma non contiene `.env` (backend appena clonato).
+    /// Stesso pattern cheap a render time di `directoryIsMissing`: una `stat`, nessuna cache —
+    /// il badge sparisce da solo al primo ridisegno dopo la creazione del file.
+    private var envFileIsMissing: Bool {
+        !directoryIsMissing && !EnvFileWriter.envFileExists(in: controller.config.workingDirectory)
     }
 
     /// Colore accento del progetto proprietario, se impostato e valido — usato solo per il
@@ -80,6 +88,19 @@ struct ServiceCardView: View {
                             .help(controller.config.workingDirectory.path)
                     }
 
+                    if envFileIsMissing {
+                        Button {
+                            showEnvSheet = true
+                        } label: {
+                            Label(".env mancante — crealo", systemImage: "key.slash")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.orange)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Nessun file .env in \(controller.config.workingDirectory.path) — clicca per incollarne il contenuto e crearlo")
+                        .accessibilityLabel("File .env mancante per \(controller.config.displayName), clicca per crearlo")
+                    }
+
                     if !showTerminal && controller.processAlive {
                         Text(controller.logs.lines.last?.text ?? " ")
                             .font(.caption2.monospaced())
@@ -132,6 +153,10 @@ struct ServiceCardView: View {
                     .frame(height: 400)
                     .padding([.horizontal, .bottom], 16)
             }
+        }
+        .sheet(isPresented: $showEnvSheet) {
+            EnvCreateSheet(serviceName: controller.config.displayName,
+                           directory: controller.config.workingDirectory)
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
         .overlay {
