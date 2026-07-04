@@ -294,7 +294,7 @@ struct ContentView: View {
                 // comportamento della voce omonima nel menu contestuale della sidebar);
                 // la conferma resta solo per "Ferma tutti", che è l'azione globale.
                 if case .project(let id) = currentSelection {
-                    Button("Ferma progetto", systemImage: "stop.circle") {
+                    Button("Ferma progetto", systemImage: "stop.fill") {
                         model.stopProject(named: id)
                         ToastCenter.shared.show("Arresto progetto \(navigationTitle(for: currentSelection))",
                                                 systemImage: "stop.circle.fill")
@@ -302,14 +302,14 @@ struct ContentView: View {
                     .disabled(!model.services.contains { $0.config.projectName == id && $0.processAlive })
                     .help("Ferma tutti i backend di questo progetto")
                 }
-                Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
+                Button("Ferma tutti", systemImage: "stop.circle") { model.stopAllRequested = true }
                     .disabled(!model.anyRunning)
                     .help("Ferma tutti i backend di tutti i progetti (⌘⇧S)")
                 // Sulla pagina di un progetto, l'avvio è sdoppiato: "Avvia progetto"
                 // (solo i suoi backend) accanto ad "Avvia tutti" (globale, sempre presente
                 // e prominente). Stessa visibilità condizionale di "Pulisci terminali".
                 if case .project(let id) = currentSelection {
-                    Button("Avvia progetto", systemImage: "play.circle") {
+                    Button("Avvia progetto", systemImage: "play.fill") {
                         model.startProject(named: id)
                         ToastCenter.shared.show("Avvio progetto \(navigationTitle(for: currentSelection))",
                                                 systemImage: "play.circle.fill")
@@ -318,7 +318,7 @@ struct ContentView: View {
                         .allSatisfy { $0.processAlive })
                     .help("Avvia tutti i backend di questo progetto")
                 }
-                Button("Avvia tutti", systemImage: "play.fill") {
+                Button("Avvia tutti", systemImage: "play.circle") {
                     let startingCount = model.services.filter { !$0.processAlive }.count
                     model.startAll()
                     ToastCenter.shared.show("Avvio di \(startingCount) backend…", systemImage: "play.circle.fill")
