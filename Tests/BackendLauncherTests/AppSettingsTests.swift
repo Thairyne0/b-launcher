@@ -138,4 +138,28 @@ import Testing
             #expect(AppSettings.terminalFontSize == 20)
         }
     }
+
+    @Test func appearanceDefaultsToSystemWhenUnset() {
+        withScratchDefaults {
+            #expect(AppSettings.appearance == .system)
+        }
+    }
+
+    @Test func appearanceRoundTrips() {
+        withScratchDefaults {
+            AppSettings.appearance = .light
+            #expect(AppSettings.appearance == .light)
+            AppSettings.appearance = .dark
+            #expect(AppSettings.appearance == .dark)
+            AppSettings.appearance = .system
+            #expect(AppSettings.appearance == .system)
+        }
+    }
+
+    @Test func appearanceFallsBackToSystemWhenStoredValueIsInvalid() {
+        withScratchDefaults {
+            AppSettings.defaults.set("not-a-real-appearance", forKey: "appearance")
+            #expect(AppSettings.appearance == .system)
+        }
+    }
 }

@@ -158,20 +158,24 @@ struct SidebarView: View {
                         newProjectError = nil
                         showNewProjectAlert = true
                     }
+                    .keyboardShortcut("n", modifiers: [.command])
 
                     Button("Scansiona cartella…", systemImage: "doc.text.magnifyingglass") {
                         scanFolder()
                     }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
 
                     Button("Importa progetto…", systemImage: "square.and.arrow.down") {
                         showImportSheet = true
                     }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
 
                     Divider()
 
                     Button("Genera con Claude Code…", systemImage: "sparkles") {
                         copyClaudeCodePrompt()
                     }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
                 } label: {
                     Label("Aggiungi progetto", systemImage: "plus")
                 }

@@ -1,4 +1,13 @@
+import AppKit
 import Foundation
+
+/// Aspetto dell'app: segue il sistema, oppure forza chiaro/scuro. `rawValue` è la forma
+/// persistita in UserDefaults — stabile e indipendente dall'ordine dei case.
+enum AppAppearance: String {
+    case system
+    case light
+    case dark
+}
 
 /// Impostazioni globali dell'app, persistite in UserDefaults. `defaults` è iniettabile
 /// per i test (mai lo `.standard` reale in suite). Ogni proprietà logge sia in lettura
@@ -14,6 +23,7 @@ enum AppSettings {
         static let maxLogLines = "maxLogLines"
         static let crashNotificationsEnabled = "crashNotificationsEnabled"
         static let terminalFontSize = "terminalFontSize"
+        static let appearance = "appearance"
     }
 
     /// Intervallo (secondi) tra due cicli di poll di stato/porte in AppModel. Default 2.
@@ -57,6 +67,31 @@ enum AppSettings {
             return clampTerminalFontSize(stored)
         }
         set { defaults.set(clampTerminalFontSize(newValue), forKey: Keys.terminalFontSize) }
+    }
+
+    /// Aspetto scelto in Impostazioni. Default `.system`; una stringa non riconosciuta
+    /// (versione futura/passata dei case, o dato corrotto) ricade su `.system` invece di
+    /// crashare o propagare `nil`.
+    static var appearance: AppAppearance {
+        get {
+            guard let stored = defaults.string(forKey: Keys.appearance),
+                  let value = AppAppearance(rawValue: stored) else {
+                return .system
+            }
+            return value
+        }
+        set { defaults.set(newValue.rawValue, forKey: Keys.appearance) }
+    }
+
+    /// Applica `appearance` a `NSApp`: `nil` per `.system` (segue il sistema), altrimenti
+    /// forza `.aqua`/`.darkAqua`. Va richiamata sia all'avvio (`AppDelegate`) sia subito dopo
+    /// ogni cambio dal Picker in `SettingsView`, per uno switch live senza riavviare l'app.
+    static func applyAppearance() {
+        switch appearance {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
     }
 
     private static func clampPollInterval(_ value: Double) -> Double {

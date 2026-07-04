@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        AppSettings.applyAppearance()
         CrashNotifier.requestAuthorizationIfNeeded()
         CrashNotifier.onNotificationTap = { [weak self] serviceID in
             NSApp.activate(ignoringOtherApps: true)
@@ -197,6 +198,22 @@ struct BackendLauncherApp: App {
                 }
                 .keyboardShortcut("k", modifiers: .command)
             }
+
+            // Unica voce del Menu sidebar "Aggiungi progetto" promossa a comando globale
+            // (⇧⌘G, attivo ovunque, non solo a menu aperto): l'azione è stateless — copia
+            // negli appunti + toast — a differenza delle altre tre (nuovo/scansiona/importa),
+            // che aprono alert/sheet il cui stato vive in `SidebarView` e non è raggiungibile
+            // da qui senza un refactor più ampio (vedi report).
+            CommandGroup(after: .newItem) {
+                Divider()
+                Button("Genera con Claude Code…") {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(ClaudeCodePrompt.make(), forType: .string)
+                    ToastCenter.shared.show("Prompt copiato", systemImage: "checkmark")
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+            }
         }
 
         MenuBarExtra {
@@ -261,16 +278,20 @@ struct MenuBarContent: View {
         Divider()
         Button("Avvia tutti") { model.startAll() }
             .disabled(model.services.allSatisfy { $0.processAlive })
+            .keyboardShortcut("a", modifiers: [.command, .shift])
         Button("Riavvia tutti") { model.restartAll() }
             .disabled(!model.anyRunning)
+            .keyboardShortcut("r", modifiers: [.command, .shift])
         Button("Ferma tutti") { model.stopAll() }
             .disabled(!model.anyRunning)
             .help("Ferma subito, senza conferma")
+            .keyboardShortcut("s", modifiers: [.command, .shift])
         Divider()
         Button("Apri launcher") {
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: "main")
         }
+        .keyboardShortcut("0", modifiers: [.command])
     }
 
     private func emoji(for status: ServiceStatus) -> String {

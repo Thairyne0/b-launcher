@@ -9,6 +9,30 @@ struct PaletteItem: Identifiable, Equatable {
     let title: String
     let subtitle: String?
     let systemImage: String
+    /// Stringa scorciatoia mostrata a destra della riga (stile Apple), es. "⇧⌘A". `nil` per gli
+    /// item senza un comando globale equivalente — default `nil` così i call site esistenti in
+    /// `ContentView` (non di competenza di questo file) continuano a compilare senza modifiche.
+    var shortcutHint: String? = nil
+}
+
+/// Mappa gli id noti della palette (definiti come stringhe in `ContentView.PaletteIDs`, privato
+/// a quel file) alle scorciatoie globali equivalenti già registrate in `BackendLauncherApp`.
+/// Duplicare qui le stringhe letterali (invece di importare il tipo, che è `private`) evita di
+/// dover toccare `ContentView.swift` — file non di competenza di questa feature — pur restando
+/// a rischio di disallineamento silenzioso se quegli id cambiano lì senza aggiornare questa
+/// mappa (vedi report).
+enum PaletteShortcutHints {
+    private static let hints: [String: String] = [
+        "action:start-all": "⇧⌘A",
+        "action:stop-all": "⇧⌘S",
+        "action:restart-all": "⇧⌘R",
+        "action:toggle-terminals": "⌘E",
+        "action:open-help": "⌘?",
+    ]
+
+    static func hint(forID id: String) -> String? {
+        hints[id]
+    }
 }
 
 /// Matcher puro (nessuna dipendenza da SwiftUI/AppKit) per la palette comandi: filtra e
@@ -199,6 +223,14 @@ struct CommandPaletteView: View {
                 }
             }
             Spacer()
+            // Priorità all'hint esplicito dell'item; in sua assenza si ricade sulla mappa
+            // per id nota (comandi globali definiti in `BackendLauncherApp`) — così i call
+            // site in `ContentView` non devono passare `shortcutHint` esplicitamente.
+            if let hint = item.shortcutHint ?? PaletteShortcutHints.hint(forID: item.id) {
+                Text(hint)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

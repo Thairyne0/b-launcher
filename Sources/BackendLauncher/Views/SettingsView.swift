@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var maxLogLines: Double = Double(AppSettings.maxLogLines)
     @State private var crashNotificationsEnabled: Bool = AppSettings.crashNotificationsEnabled
     @State private var terminalFontSize: Double = AppSettings.terminalFontSize
+    @State private var appearance: AppAppearance = AppSettings.appearance
 
     var body: some View {
         Form {
@@ -47,11 +48,20 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Aspetto", selection: $appearance) {
+                    Text("Sistema").tag(AppAppearance.system)
+                    Text("Chiaro").tag(AppAppearance.light)
+                    Text("Scuro").tag(AppAppearance.dark)
+                }
+                .pickerStyle(.segmented)
+            }
+
+            Section {
                 Toggle("Notifiche di crash", isOn: $crashNotificationsEnabled)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 300)
+        .frame(width: 420, height: 340)
         .onChange(of: pollIntervalSeconds) { _, newValue in
             AppSettings.pollIntervalSeconds = newValue
         }
@@ -66,6 +76,10 @@ struct SettingsView: View {
         }
         .onChange(of: terminalFontSize) { _, newValue in
             AppSettings.terminalFontSize = newValue
+        }
+        .onChange(of: appearance) { _, newValue in
+            AppSettings.appearance = newValue
+            AppSettings.applyAppearance()
         }
     }
 }
