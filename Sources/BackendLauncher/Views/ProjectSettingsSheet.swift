@@ -100,7 +100,7 @@ struct ProjectSettingsSheet: View {
                     .foregroundStyle(.red)
             }
             if nameChanged && projectHasRunningServices {
-                Text("Rinominare fermerà i servizi in esecuzione del progetto")
+                Text("Rinominare fermerà i backend in esecuzione del progetto")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
