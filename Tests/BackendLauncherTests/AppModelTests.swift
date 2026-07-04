@@ -395,4 +395,61 @@ import Testing
         model.reloadFromStore()
         #expect(!model.expandedServices.contains("ProjA/svc"))
     }
+
+    // MARK: - templateSyncAvailable
+
+    /// Progetto singolo importato da un template `.blauncher.json` che vive DENTRO la sua root
+    /// (tracciato: `templateSync` valorizzato), su una cartella temporanea reale — necessario
+    /// perché `checkTemplateSync` rilegge davvero il file dal disco.
+    private func makeTrackedProjectStore() throws -> (store: ServiceStore, projectRoot: URL, templateFileURL: URL, originalData: Data) {
+        let store = ServiceStore(fileURL: tempStoreURL())
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+        store.removeProject(id: "Skillera")
+
+        let projectRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("blauncher-appmodel-sync-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let templateFileURL = projectRoot.appendingPathComponent("skillera.blauncher.json")
+        try data.write(to: templateFileURL)
+        _ = try store.importTemplate(data, root: projectRoot, sourceFileURL: templateFileURL)
+        return (store, projectRoot, templateFileURL, data)
+    }
+
+    @Test func templateSyncAvailableEmptyWhenFileUnchanged() throws {
+        let (store, _, _, _) = try makeTrackedProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+
+        #expect(model.templateSyncAvailable.isEmpty)
+    }
+
+    @Test func reloadFromStoreDetectsChangedTemplateFile() throws {
+        let (store, _, templateFileURL, originalData) = try makeTrackedProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        #expect(model.templateSyncAvailable.isEmpty)
+
+        var template = try ProjectTemplateCodec.decode(originalData)
+        template.profiles.append(StoredProfile(name: "Nuovo", serviceNames: []))
+        try ProjectTemplateCodec.encode(template).write(to: templateFileURL)
+
+        model.reloadFromStore()
+
+        #expect(model.templateSyncAvailable == ["Skillera"])
+    }
+
+    @Test func syncProjectFromTemplateClearsAvailabilityAfterReload() throws {
+        let (store, _, templateFileURL, originalData) = try makeTrackedProjectStore()
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+
+        var template = try ProjectTemplateCodec.decode(originalData)
+        template.profiles.append(StoredProfile(name: "Nuovo", serviceNames: []))
+        try ProjectTemplateCodec.encode(template).write(to: templateFileURL)
+        model.reloadFromStore()
+        #expect(model.templateSyncAvailable == ["Skillera"])
+
+        try store.syncProjectFromTemplate(projectID: "Skillera")
+        model.reloadFromStore()
+
+        #expect(model.templateSyncAvailable.isEmpty)
+    }
 }

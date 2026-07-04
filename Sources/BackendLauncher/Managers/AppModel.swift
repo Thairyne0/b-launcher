@@ -39,9 +39,18 @@ final class AppModel {
     /// `reloadFromStore()` la sostituzione avviene normalmente. La UI può mostrare un badge
     /// "riavvia per applicare le modifiche" leggendo questo set.
     private(set) var pendingConfigChanges: Set<String> = []
+    /// Id dei progetti il cui template `.blauncher.json` tracciato (`StoredProject.templateSync`)
+    /// è cambiato sul disco rispetto all'ultimo import/sync — la UI mostra un banner "Sincronizza"
+    /// per questi. Ricalcolato a ogni `reloadFromStore()` e periodicamente dal poll loop (il
+    /// file può cambiare senza che l'utente tocchi lo store, es. `git pull` da terminale).
+    private(set) var templateSyncAvailable: Set<String> = []
 
     private var pollTask: Task<Void, Never>?
     private let crashNotificationsEnabled: Bool
+    /// Contatore di cicli di poll: il controllo di sync dei template è più costoso (lettura file)
+    /// di un semplice check porta, quindi gira ogni ~10 tick invece che a ogni tick — con
+    /// `AppSettings.pollIntervalSeconds` di default (~2s) equivale a circa ogni 20s.
+    private var pollTickCount = 0
 
     /// Init store-driven: costruisce i controller per TUTTI i progetti dello store (id
     /// namespaced "Progetto/nome"), non solo il primo — supporto multi-progetto reale.
@@ -56,6 +65,7 @@ final class AppModel {
         self.projectProfiles = grouped
         let configs = store.projects.flatMap(store.serviceConfigs(for:))
         services = configs.map { Self.makeController(config: $0, cwd: nil, crashNotificationsEnabled: crashNotificationsEnabled) }
+        refreshTemplateSyncAvailability()
         if pollingEnabled { startPolling() }
     }
 
@@ -146,6 +156,22 @@ final class AppModel {
         expandedServices = expandedServices.intersection(liveIDs)
         pendingConfigChanges = pendingConfigChanges.intersection(liveIDs)
         updateDockBadge()
+        refreshTemplateSyncAvailability()
+    }
+
+    /// Ricalcola `templateSyncAvailable` interrogando `ServiceStore.checkTemplateSync` per ogni
+    /// progetto tracciato. Costo contenuto: un progetto non tracciato (`templateSync == nil`,
+    /// il caso comune) è scartato senza toccare il filesystem; solo i progetti importati da un
+    /// template dentro la propria root leggono un piccolo file JSON.
+    private func refreshTemplateSyncAvailability() {
+        guard let store else { return }
+        var changed: Set<String> = []
+        for project in store.projects where project.templateSync != nil {
+            if case .changed = store.checkTemplateSync(projectID: project.id) {
+                changed.insert(project.id)
+            }
+        }
+        templateSyncAvailable = changed
     }
 
     /// Porta l'attenzione su un servizio: espande il suo terminale e filtra sugli errori.
@@ -302,6 +328,13 @@ final class AppModel {
                     self.reloadFromStore()
                 }
                 self.updateDockBadge()
+                // Controllo sync template: costa una lettura file per progetto tracciato, quindi
+                // gira ogni 10 tick (~20s coi valori di default) invece che a ogni giro di poll.
+                self.pollTickCount += 1
+                if self.pollTickCount >= 10 {
+                    self.pollTickCount = 0
+                    self.refreshTemplateSyncAvailability()
+                }
                 let pollSeconds = AppSettings.pollIntervalSeconds
                 try? await Task.sleep(nanoseconds: UInt64(pollSeconds * 1_000_000_000))
             }

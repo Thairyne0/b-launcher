@@ -37,6 +37,15 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>it.generazioneai.backend-launcher</string>
+            <key>CFBundleURLSchemes</key>
+            <array><string>blauncher</string></array>
+        </dict>
+    </array>
 </dict>
 </plist>
 EOF

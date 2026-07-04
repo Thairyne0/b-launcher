@@ -32,6 +32,11 @@ struct ContentView: View {
     /// sidebar (quel percorso resta invariato, con `preloadedFileURL` a `nil`).
     @State private var droppedTemplateURL: URL?
     @State private var showImportSheetFromDrop = false
+    /// Import in sospeso da un deep link `blauncher://import?file=...&root=...` (tipicamente
+    /// il comando "un click" suggerito da `ClaudeCodePrompt` a fine analisi). Osserva
+    /// `DeepLinkCenter.shared` così una `open "blauncher://..."` mentre l'app è già in
+    /// esecuzione riusa la stessa finestra invece di aprirne una nuova.
+    @State private var deepLinkCenter = DeepLinkCenter.shared
     /// `true` mentre un drag di file è sopra la finestra — pilota l'overlay "Rilascia per
     /// aggiungere".
     @State private var dropTargeted = false
@@ -149,6 +154,14 @@ struct ContentView: View {
                 showImportSheetFromDrop = false
             }, preloadedFileURL: droppedTemplateURL)
         }
+        .sheet(item: Binding(
+            get: { deepLinkCenter.pendingImport.map(PendingDeepImportTarget.init) },
+            set: { if $0 == nil { deepLinkCenter.pendingImport = nil } }
+        )) { target in
+            ImportTemplateSheet(model: model, onDismiss: {
+                deepLinkCenter.pendingImport = nil
+            }, preloadedFileURL: target.fileURL, preloadedRootURL: target.rootURL)
+        }
         .alert("Impossibile cambiare cartella", isPresented: Binding(
             get: { rebaseError != nil },
             set: { if !$0 { rebaseError = nil } }
@@ -192,6 +205,9 @@ struct ContentView: View {
                     VStack(spacing: 14) {
                         if allWorkingDirectoriesMissing(projectServices) {
                             missingRootBanner(projectID: id)
+                        }
+                        if model.templateSyncAvailable.contains(id) {
+                            templateSyncBanner(projectID: id)
                         }
                         gridView(services: projectServices)
                     }
@@ -372,6 +388,48 @@ struct ContentView: View {
         .padding(.top, 20)
     }
 
+    /// Banner "template del team cambiato", mostrato in `.project(id)` quando
+    /// `model.templateSyncAvailable` contiene l'id — il file `.blauncher.json` da cui il
+    /// progetto è stato importato è cambiato sul disco (tipicamente dopo un `git pull` che ha
+    /// portato una revisione aggiornata committata da un collega). "Sincronizza" rilegge il file
+    /// e sostituisce servizi/profili/infraCheck del progetto, preservando nome e colore accento
+    /// (stessa semantica di `ServiceStore.syncProjectFromTemplate`); i servizi in esecuzione con
+    /// una config cambiata NON vengono fermati (stesso meccanismo di `pendingConfigChanges`
+    /// già usato da ogni altra mutazione dello store che tocca `services`).
+    private func templateSyncBanner(projectID: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.blue)
+                .imageScale(.large)
+            Text("Il template del progetto è cambiato.")
+                .font(.callout.weight(.medium))
+            Spacer()
+            Button("Sincronizza") {
+                syncProjectFromTemplate(projectID: projectID)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .glassEffect(.regular.tint(.blue.opacity(0.25)), in: .rect(cornerRadius: 14))
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+    }
+
+    /// Azione del bottone "Sincronizza" del banner di template sync: rilegge il file tracciato,
+    /// ricarica lo store e conferma con un toast. Un fallimento (es. file rimosso proprio tra il
+    /// rilevamento del banner e il click) mostra un toast d'errore invece di un alert — coerente
+    /// con l'uso di `ToastCenter` per conferme/errori di azioni "fire and forget" in questa vista.
+    private func syncProjectFromTemplate(projectID: String) {
+        guard let store = model.store else { return }
+        do {
+            try store.syncProjectFromTemplate(projectID: projectID)
+            model.reloadFromStore()
+            ToastCenter.shared.show("Progetto sincronizzato", systemImage: "checkmark.circle.fill")
+        } catch {
+            ToastCenter.shared.show(error.localizedDescription, systemImage: "xmark.octagon.fill")
+        }
+    }
+
     // MARK: - Palette comandi (⌘K)
 
     /// Prefissi degli `id` di `PaletteItem` usati per instradare la selezione in
@@ -549,6 +607,20 @@ private struct PendingScan: Identifiable {
     let result: ProjectScanner.ScanResult
     let root: URL
     var id: String { root.path }
+}
+
+/// Wrapper `Identifiable` per pilotare `.sheet(item:)` da `DeepLinkCenter.shared.pendingImport`
+/// (uno `struct` non-`Identifiable`, condiviso con `DeepLinkCenter` per restare indipendente da
+/// SwiftUI): l'id è il path del file, univoco per singola richiesta di import via deep link.
+private struct PendingDeepImportTarget: Identifiable {
+    let fileURL: URL
+    let rootURL: URL?
+    var id: String { fileURL.path }
+
+    init(_ pending: PendingDeepImport) {
+        fileURL = pending.fileURL
+        rootURL = pending.rootURL
+    }
 }
 
 private extension String {

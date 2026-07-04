@@ -1,6 +1,62 @@
 import AppKit
 import SwiftUI
 
+/// Richiesta di import in sospeso, generata da un deep link `blauncher://import` — presentata
+/// da `ContentView` tramite `ImportTemplateSheet` (stessa sheet del bottone "Importa
+/// progetto…" e del drag&drop, precaricata sia sul file sia, se presente, sulla root).
+struct PendingDeepImport: Equatable {
+    var fileURL: URL
+    var rootURL: URL?
+}
+
+/// Gestisce i deep link `blauncher://` (attualmente il solo `import`). Isolato dalla UI così è
+/// testabile senza `NSApp`/scene: `handle(url:)` è pura salvo l'accesso al filesystem per
+/// validare che il file indicato esista davvero.
+///
+/// Formato supportato: `blauncher://import?file=/percorso/assoluto/progetto.blauncher.json`
+/// con `root` opzionale (`&root=/percorso/assoluto/repo`) per precompilare anche la cartella di
+/// destinazione — pensato per il comando "un click" che `ClaudeCodePrompt` chiede all'AI di
+/// stampare a fine analisi (`open "blauncher://import?file=...&root=..."`).
+@MainActor
+@Observable
+final class DeepLinkCenter {
+    static let shared = DeepLinkCenter()
+
+    /// Import in attesa di conferma utente: la view lo consuma presentando `ImportTemplateSheet`
+    /// e lo azzera alla chiusura (sheet dismissed) per non ripresentarlo su una successiva
+    /// ricomparsa della scena.
+    var pendingImport: PendingDeepImport?
+
+    /// Init non-privato: la UI usa sempre `.shared`, i test vogliono un'istanza isolata (stesso
+    /// pattern di `ToastCenter`).
+    init() {}
+
+    func handle(url: URL) {
+        guard url.scheme == "blauncher" else { return }
+        guard url.host == "import" else {
+            ToastCenter.shared.show("Link non valido", systemImage: "exclamationmark.triangle.fill")
+            return
+        }
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        // `URLComponents.queryItems` decodifica automaticamente il percent-encoding.
+        let queryItems = components?.queryItems ?? []
+        guard let fileParam = queryItems.first(where: { $0.name == "file" })?.value, !fileParam.isEmpty else {
+            ToastCenter.shared.show("Link non valido", systemImage: "exclamationmark.triangle.fill")
+            return
+        }
+        let fileURL = URL(fileURLWithPath: fileParam)
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory)
+        guard exists, !isDirectory.boolValue, fileURL.pathExtension.lowercased() == "json" else {
+            ToastCenter.shared.show("Link non valido", systemImage: "exclamationmark.triangle.fill")
+            return
+        }
+        let rootParam = queryItems.first(where: { $0.name == "root" })?.value
+        let rootURL = rootParam.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+        pendingImport = PendingDeepImport(fileURL: fileURL, rootURL: rootURL)
+    }
+}
+
 /// Delegate: attivazione app da binario nudo (swift run) + conferma quit con backend attivi.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var model: AppModel?
@@ -67,6 +123,9 @@ struct BackendLauncherApp: App {
         WindowGroup(id: "main") {
             ContentView(model: model)
                 .onAppear { delegate.model = model }
+                .onOpenURL { url in
+                    DeepLinkCenter.shared.handle(url: url)
+                }
         }
         .defaultSize(width: 860, height: 720)
         .commands {

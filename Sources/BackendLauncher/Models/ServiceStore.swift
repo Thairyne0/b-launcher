@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Observation
 
@@ -44,7 +45,46 @@ struct StoredProject: Codable, Hashable, Identifiable {
     /// Additivo (schema resta v1): assente in un file scritto da una versione precedente
     /// dell'app, decodifica a `nil` grazie al default qui sotto.
     var accentColorHex: String? = nil
+    /// Presente quando il progetto è stato importato da un template `.blauncher.json` che vive
+    /// DENTRO la root del progetto stesso (tipico: template committato dal team nel repo).
+    /// Permette di rilevare quando il file è cambiato (es. dopo un `git pull`) e offrire una
+    /// risincronizzazione. Additivo (schema resta v1): assente in un file scritto da una
+    /// versione precedente dell'app, decodifica a `nil` grazie al default qui sotto.
+    var templateSync: TemplateSyncInfo? = nil
     var id: String { name }
+}
+
+/// Traccia il template `.blauncher.json` da cui un progetto è stato importato, per rilevare
+/// modifiche successive (es. un collega ha aggiornato il template e l'utente ha fatto `git
+/// pull`). `fileRelativePath` è relativo alla root del progetto (stessa root calcolata da
+/// `ProjectTemplateCodec.commonRoot` sulle directory dei servizi correnti), non alla directory
+/// di un singolo servizio.
+struct TemplateSyncInfo: Codable, Hashable {
+    var fileRelativePath: String
+    var lastImportedHash: String
+}
+
+/// Hashing puro (nessuna dipendenza da `ServiceStore`) per confrontare i contenuti di un
+/// template `.blauncher.json` tra l'import e un successivo controllo di sincronizzazione.
+/// SHA256 esadecimale minuscolo — stabile, non serve altro che rilevare "è cambiato qualcosa".
+enum TemplateSyncHasher {
+    static func hash(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// Esito di `ServiceStore.checkTemplateSync(projectID:)`.
+enum TemplateSyncStatus: Equatable {
+    /// Il progetto non è tracciato (nessun `templateSync`, es. creato manualmente o importato
+    /// da una versione dell'app precedente a questa feature).
+    case notTracked
+    /// Il file del template esiste ancora e il suo hash coincide con l'ultimo importato.
+    case upToDate
+    /// Il file del template esiste ma il contenuto è cambiato rispetto all'ultimo import.
+    case changed(newHash: String)
+    /// Il file del template non esiste più al path relativo tracciato (root mancante, file
+    /// rinominato/rimosso, ecc.).
+    case fileMissing
 }
 
 struct StoreFile: Codable {
@@ -407,16 +447,107 @@ final class ServiceStore {
     /// l'append allo store con la stessa semantica di unicità di `addProject` (nome
     /// case-insensitive univoco — su collisione la UI può richiamare con `nameOverride`).
     /// Su successo, persiste e ritorna il progetto creato.
+    ///
+    /// `sourceFileURL`, se fornito e ricade DENTRO `root` (il template vive nel repo del team,
+    /// non altrove sul disco es. Downloads), imposta `templateSync` sul progetto creato: path
+    /// relativo a `root` + hash SHA256 del contenuto importato. Questo abilita
+    /// `checkTemplateSync`/`syncProjectFromTemplate` a rilevare aggiornamenti futuri del file
+    /// (es. dopo un `git pull` che porta una nuova versione del template committata dal team).
+    /// Fuori da `root`, o `nil`: `templateSync` resta `nil` (progetto non tracciato).
     @discardableResult
-    func importTemplate(_ data: Data, root: URL, nameOverride: String? = nil) throws -> StoredProject {
+    func importTemplate(_ data: Data, root: URL, nameOverride: String? = nil, sourceFileURL: URL? = nil) throws -> StoredProject {
         let template = try ProjectTemplateCodec.decode(data)
-        let project = try ProjectTemplateCodec.makeProject(from: template, root: root, nameOverride: nameOverride)
+        var project = try ProjectTemplateCodec.makeProject(from: template, root: root, nameOverride: nameOverride)
         guard !projects.contains(where: { $0.name.caseInsensitiveCompare(project.name) == .orderedSame }) else {
             throw StoreError.duplicateProjectName(project.name)
+        }
+        if let sourceFileURL, let relativePath = Self.relativePathIfInside(fileURL: sourceFileURL, root: root) {
+            project.templateSync = TemplateSyncInfo(fileRelativePath: relativePath, lastImportedHash: TemplateSyncHasher.hash(data))
         }
         projects.append(project)
         save()
         return project
+    }
+
+    /// `nil` se `fileURL` non ricade sotto `root` (standardizzati entrambi), altrimenti il
+    /// suffisso relativo (senza slash iniziale).
+    private static func relativePathIfInside(fileURL: URL, root: URL) -> String? {
+        let standardizedFile = fileURL.standardizedFileURL.path
+        let standardizedRoot = root.standardizedFileURL.path
+        let rootWithSlash = standardizedRoot.hasSuffix("/") ? standardizedRoot : standardizedRoot + "/"
+        guard standardizedFile.hasPrefix(rootWithSlash) else { return nil }
+        return String(standardizedFile.dropFirst(rootWithSlash.count))
+    }
+
+    // MARK: - Template sync dal team (post-import)
+
+    /// Calcola lo stato di sincronizzazione del template da cui `projectID` è stato importato,
+    /// rileggendo il file dal disco alla root corrente del progetto (calcolata come
+    /// `ProjectTemplateCodec.commonRoot` delle directory attuali dei suoi servizi — stessa
+    /// euristica usata dall'export/rebase, così un progetto ribasato su un nuovo Mac continua a
+    /// essere tracciato correttamente).
+    func checkTemplateSync(projectID: String) -> TemplateSyncStatus {
+        guard let project = projects.first(where: { $0.id == projectID }),
+              let sync = project.templateSync else {
+            return .notTracked
+        }
+        guard let root = ProjectTemplateCodec.commonRoot(forServiceDirectories: project.services.map(\.directory)) else {
+            return .fileMissing
+        }
+        let fileURL = root.appendingPathComponent(sync.fileRelativePath)
+        guard let data = try? Data(contentsOf: fileURL) else {
+            return .fileMissing
+        }
+        let currentHash = TemplateSyncHasher.hash(data)
+        return currentHash == sync.lastImportedHash ? .upToDate : .changed(newHash: currentHash)
+    }
+
+    /// Errori di `syncProjectFromTemplate`, distinti da `StoreError` perché riflettono lo stato
+    /// del file sul disco (non una violazione di invarianti dello store).
+    enum TemplateSyncError: LocalizedError, Equatable {
+        case notTracked
+        case fileMissing
+
+        var errorDescription: String? {
+            switch self {
+            case .notTracked:
+                "Questo progetto non è collegato a un template di team."
+            case .fileMissing:
+                "Il file del template non è più presente nella cartella del progetto."
+            }
+        }
+    }
+
+    /// Rilegge il template tracciato dal disco e SOSTITUISCE servizi/profili/infraCheck del
+    /// progetto esistente con quelli ricostruiti dal template aggiornato (stessa root — i path
+    /// assoluti dei servizi restano quelli già in uso su questo Mac). Nome e colore accento del
+    /// progetto sono PRESERVATI (il template non li conosce/non deve poterli sovrascrivere).
+    /// Aggiorna anche `lastImportedHash`. Il chiamante deve invocare `AppModel.reloadFromStore()`
+    /// dopo — stessa semantica di ogni altra mutazione dello store che tocca `services`.
+    func syncProjectFromTemplate(projectID: String) throws {
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw StoreError.projectNotFound(projectID)
+        }
+        guard let sync = projects[index].templateSync else {
+            throw TemplateSyncError.notTracked
+        }
+        guard let root = ProjectTemplateCodec.commonRoot(forServiceDirectories: projects[index].services.map(\.directory)) else {
+            throw TemplateSyncError.fileMissing
+        }
+        let fileURL = root.appendingPathComponent(sync.fileRelativePath)
+        guard let data = try? Data(contentsOf: fileURL) else {
+            throw TemplateSyncError.fileMissing
+        }
+        let template = try ProjectTemplateCodec.decode(data)
+        let rebuilt = try ProjectTemplateCodec.makeProject(from: template, root: root, nameOverride: projects[index].name)
+
+        var updated = projects[index]
+        updated.services = rebuilt.services
+        updated.profiles = rebuilt.profiles
+        updated.infraCheck = rebuilt.infraCheck
+        updated.templateSync = TemplateSyncInfo(fileRelativePath: sync.fileRelativePath, lastImportedHash: TemplateSyncHasher.hash(data))
+        replaceProject(updated)
+        save()
     }
 
     /// Scrittura atomica, JSON pretty-printed con chiavi ordinate per diff stabili.

@@ -15,6 +15,16 @@ import Testing
         #expect(prompt.contains(".blauncher.json"))
     }
 
+    @Test func promptSuggestsOneClickDeepLinkCommand() {
+        let prompt = ClaudeCodePrompt.make()
+
+        #expect(prompt.contains("blauncher://import"))
+        #expect(prompt.contains("open \"blauncher://import?file="))
+        #expect(prompt.contains("&root="))
+        // Fallback esistente preservato: se l'utente preferisce, può ancora dare il percorso a voce.
+        #expect(prompt.contains("dimmi"))
+    }
+
     @Test func promptForbidsTraversal() {
         let prompt = ClaudeCodePrompt.make()
 

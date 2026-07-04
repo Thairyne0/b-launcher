@@ -47,7 +47,9 @@ enum ClaudeCodePrompt {
         - Non modificare nessun altro file della repo: crea SOLO il template.
         - Verifica che il JSON sia valido prima di consegnare.
 
-        Quando hai finito dimmi il percorso del file: lo importerò da Backend Launcher con "Importa progetto…" indicando la root di questa repo.
+        Quando hai finito, stampa questo comando (sostituendo i percorsi assoluti reali) così lo apro con un click solo:
+        open "blauncher://import?file=<PERCORSO-ASSOLUTO-DEL-FILE>&root=<PERCORSO-ASSOLUTO-ROOT-REPO>"
+        In alternativa, se preferisci, dimmi semplicemente il percorso del file: lo importerò da Backend Launcher con "Importa progetto…" indicando la root di questa repo.
         """
     }
 }

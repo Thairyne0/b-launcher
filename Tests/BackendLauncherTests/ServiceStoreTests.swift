@@ -706,4 +706,230 @@ import Testing
         #expect(store.projects.count == 2)
         #expect(store.projects.contains { $0.name == "Skillera (colleague)" })
     }
+
+    // MARK: - Template sync dal team
+
+    /// Cartella temporanea univoca da usare come root "reale" di un progetto per i test di
+    /// sync (che leggono davvero il file dal disco, a differenza degli altri test import/export
+    /// che usano path fittizi mai letti).
+    private func tempProjectRoot() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("blauncher-sync-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    @Test func importTemplateWithSourceFileInsideRootSetsTemplateSync() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+        store.removeProject(id: "Skillera")
+
+        let projectRoot = try tempProjectRoot()
+        let templateFileURL = projectRoot.appendingPathComponent("skillera.blauncher.json")
+        try data.write(to: templateFileURL)
+
+        let imported = try store.importTemplate(data, root: projectRoot, sourceFileURL: templateFileURL)
+
+        let sync = try #require(imported.templateSync)
+        #expect(sync.fileRelativePath == "skillera.blauncher.json")
+        #expect(sync.lastImportedHash == TemplateSyncHasher.hash(data))
+    }
+
+    @Test func importTemplateWithSourceFileOutsideRootLeavesTemplateSyncNil() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+        store.removeProject(id: "Skillera")
+
+        let projectRoot = try tempProjectRoot()
+        // File sorgente FUORI dalla root scelta per il progetto (es. scaricato in Downloads).
+        let outsideFileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("blauncher-sync-outside-\(UUID().uuidString).json")
+        try data.write(to: outsideFileURL)
+
+        let imported = try store.importTemplate(data, root: projectRoot, sourceFileURL: outsideFileURL)
+
+        #expect(imported.templateSync == nil)
+    }
+
+    @Test func importTemplateWithoutSourceFileLeavesTemplateSyncNil() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+        store.removeProject(id: "Skillera")
+
+        let projectRoot = try tempProjectRoot()
+        let imported = try store.importTemplate(data, root: projectRoot)
+
+        #expect(imported.templateSync == nil)
+    }
+
+    @Test func checkTemplateSyncReturnsNotTrackedWhenNoSyncInfo() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+
+        #expect(store.checkTemplateSync(projectID: "Skillera") == .notTracked)
+    }
+
+    @Test func checkTemplateSyncReturnsNotTrackedWhenProjectMissing() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+
+        #expect(store.checkTemplateSync(projectID: "non-esiste") == .notTracked)
+    }
+
+    @Test func checkTemplateSyncReturnsUpToDateWhenHashMatches() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+        store.removeProject(id: "Skillera")
+
+        let projectRoot = try tempProjectRoot()
+        let templateFileURL = projectRoot.appendingPathComponent("skillera.blauncher.json")
+        try data.write(to: templateFileURL)
+        let imported = try store.importTemplate(data, root: projectRoot, sourceFileURL: templateFileURL)
+
+        #expect(store.checkTemplateSync(projectID: imported.id) == .upToDate)
+    }
+
+    @Test func checkTemplateSyncReturnsChangedWhenFileContentDiffers() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+        store.removeProject(id: "Skillera")
+
+        let projectRoot = try tempProjectRoot()
+        let templateFileURL = projectRoot.appendingPathComponent("skillera.blauncher.json")
+        try data.write(to: templateFileURL)
+        let imported = try store.importTemplate(data, root: projectRoot, sourceFileURL: templateFileURL)
+
+        // Simula un `git pull` che ha aggiornato il template: cambia il nome di un profilo.
+        var template = try ProjectTemplateCodec.decode(data)
+        template.profiles.append(StoredProfile(name: "Nuovo", serviceNames: []))
+        let newData = try ProjectTemplateCodec.encode(template)
+        try newData.write(to: templateFileURL)
+
+        let status = store.checkTemplateSync(projectID: imported.id)
+        #expect(status == .changed(newHash: TemplateSyncHasher.hash(newData)))
+    }
+
+    @Test func checkTemplateSyncReturnsFileMissingWhenFileDeleted() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+        store.removeProject(id: "Skillera")
+
+        let projectRoot = try tempProjectRoot()
+        let templateFileURL = projectRoot.appendingPathComponent("skillera.blauncher.json")
+        try data.write(to: templateFileURL)
+        let imported = try store.importTemplate(data, root: projectRoot, sourceFileURL: templateFileURL)
+
+        try FileManager.default.removeItem(at: templateFileURL)
+
+        #expect(store.checkTemplateSync(projectID: imported.id) == .fileMissing)
+    }
+
+    @Test func syncProjectFromTemplateReplacesServicesKeepsNameAndColorUpdatesHash() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+        store.removeProject(id: "Skillera")
+
+        let projectRoot = try tempProjectRoot()
+        let templateFileURL = projectRoot.appendingPathComponent("skillera.blauncher.json")
+        try data.write(to: templateFileURL)
+        let imported = try store.importTemplate(data, root: projectRoot, sourceFileURL: templateFileURL)
+
+        // Personalizzazioni locali che devono sopravvivere alla sync.
+        try store.updateProjectAccentColor(projectID: imported.id, hex: "#123456")
+
+        // Il collega ha aggiunto un servizio al template e lo ha committato (git pull locale).
+        var template = try ProjectTemplateCodec.decode(data)
+        template.services.append(ProjectTemplate.TemplateService(
+            name: "newsvc",
+            relativeDirectory: "NEWSVC-BE",
+            command: "npm run start:dev",
+            readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil)
+        ))
+        let newData = try ProjectTemplateCodec.encode(template)
+        try newData.write(to: templateFileURL)
+
+        try store.syncProjectFromTemplate(projectID: imported.id)
+
+        let synced = try #require(store.projects.first { $0.id == imported.id })
+        #expect(synced.name == "Skillera")
+        #expect(synced.accentColorHex == "#123456")
+        #expect(synced.services.contains { $0.name == "newsvc" })
+        #expect(synced.services.count == template.services.count)
+        #expect(synced.templateSync?.lastImportedHash == TemplateSyncHasher.hash(newData))
+
+        // Persistito su disco.
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first { $0.id == imported.id }?.services.contains { $0.name == "newsvc" } == true)
+    }
+
+    @Test func syncProjectFromTemplateThrowsWhenNotTracked() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+
+        #expect(throws: ServiceStore.TemplateSyncError.self) {
+            try store.syncProjectFromTemplate(projectID: "Skillera")
+        }
+    }
+
+    @Test func syncProjectFromTemplateThrowsWhenProjectMissing() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+
+        #expect(throws: StoreError.self) {
+            try store.syncProjectFromTemplate(projectID: "non-esiste")
+        }
+    }
+
+    @Test func syncProjectFromTemplateThrowsWhenFileMissing() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        let exportRoot = URL(fileURLWithPath: "/Users/retr0/Documents/skilllocale/SkillLocale")
+        let data = try store.exportTemplate(projectID: "Skillera", root: exportRoot)
+        store.removeProject(id: "Skillera")
+
+        let projectRoot = try tempProjectRoot()
+        let templateFileURL = projectRoot.appendingPathComponent("skillera.blauncher.json")
+        try data.write(to: templateFileURL)
+        let imported = try store.importTemplate(data, root: projectRoot, sourceFileURL: templateFileURL)
+
+        try FileManager.default.removeItem(at: templateFileURL)
+
+        #expect(throws: ServiceStore.TemplateSyncError.self) {
+            try store.syncProjectFromTemplate(projectID: imported.id)
+        }
+    }
+}
+
+@Suite struct TemplateSyncHasherTests {
+    @Test func hashIsStableForSameData() {
+        let data = Data("hello world".utf8)
+        #expect(TemplateSyncHasher.hash(data) == TemplateSyncHasher.hash(data))
+    }
+
+    @Test func hashDiffersForDifferentData() {
+        let a = Data("hello".utf8)
+        let b = Data("world".utf8)
+        #expect(TemplateSyncHasher.hash(a) != TemplateSyncHasher.hash(b))
+    }
+
+    @Test func hashIsLowercaseHex64Chars() {
+        let hash = TemplateSyncHasher.hash(Data("test".utf8))
+        #expect(hash.count == 64)
+        #expect(hash == hash.lowercased())
+        #expect(hash.allSatisfy { $0.isHexDigit })
+    }
 }

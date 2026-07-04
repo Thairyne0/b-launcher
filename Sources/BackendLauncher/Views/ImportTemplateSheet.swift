@@ -20,8 +20,17 @@ struct ImportTemplateSheet: View {
     /// (default) lascia il flusso esistente invariato: il bottone "Importa progetto…" della
     /// sidebar continua a presentare questa sheet senza precaricare nulla.
     var preloadedFileURL: URL? = nil
+    /// Quando valorizzato (deep link `blauncher://import?...&root=...`), precompila la root del
+    /// progetto così l'utente deve solo confermare (o cambiarla) invece di dover ripassare dal
+    /// picker di cartella. `nil` (default) lascia il flusso esistente invariato: l'utente sceglie
+    /// sempre la root con "Scegli…".
+    var preloadedRootURL: URL? = nil
 
     @State private var loadedTemplate: ProjectTemplate?
+    /// Path del file da cui `loadedTemplate` è stato decodificato — passato come `sourceFileURL`
+    /// a `ServiceStore.importTemplate` così lo store può rilevare se vive DENTRO la root scelta
+    /// e attivare il tracking `templateSync` (sincronizzazione futura dal team).
+    @State private var loadedFileURL: URL?
     @State private var rootURL: URL?
     @State private var projectName: String = ""
     @State private var errorMessage: String?
@@ -102,6 +111,9 @@ struct ImportTemplateSheet: View {
             // `loadedTemplate` essendo già valorizzato dal primo giro evita un doppio decode.
             guard loadedTemplate == nil, let preloadedFileURL else { return }
             loadTemplate(from: preloadedFileURL)
+            if let preloadedRootURL {
+                rootURL = preloadedRootURL
+            }
         }
     }
 
@@ -123,6 +135,7 @@ struct ImportTemplateSheet: View {
             let data = try Data(contentsOf: url)
             let template = try ProjectTemplateCodec.decode(data)
             loadedTemplate = template
+            loadedFileURL = url
             projectName = template.name
             errorMessage = nil
         } catch {
@@ -147,7 +160,7 @@ struct ImportTemplateSheet: View {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(loadedTemplate)
             let trimmedName = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
-            _ = try store.importTemplate(data, root: rootURL, nameOverride: trimmedName)
+            _ = try store.importTemplate(data, root: rootURL, nameOverride: trimmedName, sourceFileURL: loadedFileURL)
             model.reloadFromStore()
             onDismiss()
         } catch {
