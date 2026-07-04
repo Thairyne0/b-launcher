@@ -293,13 +293,26 @@ struct ContentView: View {
                 Button("Ferma tutti", systemImage: "stop.fill") { model.stopAllRequested = true }
                     .disabled(!model.anyRunning)
                     .help("Ferma tutti (⌘⇧S)")
+                // Sulla pagina di un progetto, l'avvio è sdoppiato: "Avvia progetto"
+                // (solo i suoi backend) accanto ad "Avvia tutti" (globale, sempre presente
+                // e prominente). Stessa visibilità condizionale di "Pulisci terminali".
+                if case .project(let id) = currentSelection {
+                    Button("Avvia progetto", systemImage: "play.circle") {
+                        model.startProject(named: id)
+                        ToastCenter.shared.show("Avvio progetto \(navigationTitle(for: currentSelection))",
+                                                systemImage: "play.circle.fill")
+                    }
+                    .disabled(model.services.filter { $0.config.projectName == id }
+                        .allSatisfy { $0.processAlive })
+                    .help("Avvia tutti i backend di questo progetto")
+                }
                 Button("Avvia tutti", systemImage: "play.fill") {
                     let startingCount = model.services.filter { !$0.processAlive }.count
                     model.startAll()
                     ToastCenter.shared.show("Avvio di \(startingCount) backend…", systemImage: "play.circle.fill")
                 }
                     .disabled(model.services.allSatisfy { $0.processAlive })
-                    .help("Avvia tutti (⌘⇧A)")
+                    .help("Avvia tutti i backend di tutti i progetti (⌘⇧A)")
                     .buttonStyle(.glassProminent)
                 if case .project(let id) = currentSelection {
                     Button("Pulisci terminali", systemImage: "clear") {
