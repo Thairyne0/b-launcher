@@ -16,8 +16,8 @@ backend si definiscono dalla UI e vivono su disco.
 ## Installazione (per il team)
 
 ```bash
-git clone git@github.com:Thairyne0/backend-launcher.git
-cd backend-launcher
+git clone git@github.com:Thairyne0/b-launcher.git
+cd b-launcher
 make install
 ```
 
