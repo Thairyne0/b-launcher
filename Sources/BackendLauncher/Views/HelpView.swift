@@ -31,7 +31,7 @@ enum HelpContent {
                 .paragraph("Puoi gestire più progetti insieme, ciascuno con i propri backend, e vedere lo stato di tutti a colpo d'occhio."),
                 .bullets([
                     "Nessuna dipendenza esterna da installare.",
-                    "Non modifica MAI i file dei tuoi progetti: solo lettura delle cartelle e gestione dei processi che avvia."
+                    "Non modifica MAI i file dei tuoi progetti: solo lettura delle cartelle e gestione dei processi che avvia. Unica eccezione: può CREARE il file .env di un backend, ma solo su tua richiesta esplicita e mai sovrascrivendo nulla (vedi \"Gestione progetti\")."
                 ])
             ]
         ),
@@ -101,6 +101,7 @@ enum HelpContent {
                 .bullets([
                     "Pill con uptime e utilizzo CPU/RAM.",
                     "Badge errori cliccabile.",
+                    "Badge \".env mancante — crealo\" se la cartella del backend non contiene un file .env: cliccalo per crearlo guidato (la stessa mancanza è segnalata da un'icona 🔑 accanto al backend in sidebar).",
                     "Sottotitolo con l'ultima riga di log."
                 ])
             ]
@@ -139,6 +140,13 @@ enum HelpContent {
                 ]),
                 .paragraph("Se le cartelle dei backend non esistono su questo Mac, un banner \"cartelle mancanti\" te lo segnala, con la possibilità di ripuntare la cartella o eliminare il progetto direttamente da lì."),
                 .paragraph("Per modificare un servizio, usa il tasto destro sul rigo: va prima fermato. Se modifichi un servizio mentre è in esecuzione, le modifiche restano \"in sospeso\" (icona arancione) e si applicano solo quando lo fermi."),
+                .subheading("File .env mancante"),
+                .paragraph("Un backend appena clonato di solito non ha il file .env (è escluso da git). La card lo segnala con un badge cliccabile: si apre una finestra dove incolli il contenuto ricevuto da un collega, o lo importi da un file, e il launcher crea .env nella cartella del backend."),
+                .bullets([
+                    "Prima di scrivere verifica che .env sia coperto dal .gitignore: se non lo è ti avvisa (rischio di committare i segreti) e chiede una conferma esplicita.",
+                    "Non sovrascrive mai un .env esistente.",
+                    "Il file è creato leggibile solo dal tuo utente e il contenuto incollato non finisce mai nei log del launcher."
+                ]),
                 .subheading("Sincronizza (template del team)"),
                 .paragraph("Se il progetto è stato importato da un template .blauncher.json e quel file cambia su disco (tipicamente dopo un git pull che porta una revisione aggiornata da un collega), un banner \"Il template del progetto è cambiato\" appare sopra la griglia del progetto. \"Sincronizza\" rilegge il file e sostituisce backend, profili e spia infrastruttura, preservando nome e colore del progetto. I backend in esecuzione non vengono fermati: le loro modifiche restano in sospeso e si applicano al prossimo riavvio, come per una modifica manuale.")
             ]
@@ -221,6 +229,7 @@ enum HelpContent {
                 .bullets([
                     "Servizio \"esterno\" — la porta è occupata da un processo esterno: chiudi l'altro processo.",
                     "\"Cartella mancante\" — il percorso non esiste su questo Mac: usa \"Cambia cartella radice\" o \"Modifica\".",
+                    "\".env mancante\" — la cartella del backend non contiene il file .env: clicca il badge sulla card per crearlo incollando il contenuto.",
                     "Spia infrastruttura rossa — il broker/DB del progetto è giù: i backend partono ma non comunicano.",
                     "Avvio lento oltre 90 secondi — controlla i log per capire cosa sta succedendo."
                 ]),

@@ -147,9 +147,10 @@ se la working directory non esiste più su disco (avvio disabilitato finché non
 torna disponibile).
 
 - **Badge ".env mancante"**: se la cartella del servizio esiste ma non contiene
-  `.env` (tipico backend appena clonato), la card mostra un badge cliccabile che
-  apre uno sheet: incolli il contenuto ricevuto da un collega (o lo importi da
-  file) e il launcher crea `working directory/.env` per te. Sicurezza: verifica
+  `.env` (tipico backend appena clonato), la card mostra un badge cliccabile —
+  e la sidebar un'icona 🔑 accanto al backend — che apre uno sheet: incolli il
+  contenuto ricevuto da un collega (o lo importi da file) e il launcher crea
+  `working directory/.env` per te. Sicurezza: verifica
   che `.env` sia coperto dal `.gitignore` (altrimenti avvisa e chiede conferma
   esplicita), non sovrascrive mai un file esistente (creazione atomica), permessi
   `0600`, e il contenuto incollato non finisce mai nei log o nelle impostazioni
