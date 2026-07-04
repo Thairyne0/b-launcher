@@ -114,7 +114,8 @@ private func fakeConfig(command: String) -> ServiceConfig {
                                   onCrash: { captured = ($0, $1) })
         c.start()
         _ = await waitUntil { c.status == .crashed(exitCode: 9) }
-        #expect(captured?.0 == "skillfake")
+        // Il callback riceve `displayName`, che ora è il nome puro (niente prefisso "skill").
+        #expect(captured?.0 == "fake")
         #expect(captured?.1 == 9)
     }
 

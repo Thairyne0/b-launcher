@@ -41,7 +41,11 @@ struct ServiceConfig: Identifiable, Hashable {
     /// nudo — questo mantiene `id == name` per ogni config costruita senza `projectName`
     /// (tutti i path legacy/test esistenti).
     var id: String { projectName.isEmpty ? name : "\(projectName)/\(name)" }
-    var displayName: String { "skill\(name)" }
+    /// Nome mostrato in UI: esattamente il nome del servizio, senza trasformazioni.
+    /// (Storicamente era "skill\(name)", retaggio dei backend SkillLocale hardcoded i cui
+    /// nomi brevi erano "gateway"/"id"/…: con progetti/servizi creati dall'utente il prefisso
+    /// produceva nomi sbagliati, es. "skillprova" per un servizio chiamato "prova".)
+    var displayName: String { name }
     var workingDirectory: URL {
         absoluteDirectory ?? ServiceConfig.projectRoot.appendingPathComponent(directory)
     }
