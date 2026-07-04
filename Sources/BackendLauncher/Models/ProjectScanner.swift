@@ -79,6 +79,10 @@ enum ProjectScanner {
         }
         scanned.sort { $0.service.relativeDirectory < $1.service.relativeDirectory }
 
+        // Servizi docker-compose DOPO quelli su directory (e quindi perdenti in caso di
+        // porta duplicata: la readiness a porta resta al servizio "nativo").
+        scanned.append(contentsOf: scanComposeServices(in: standardizedRoot))
+
         let services = downgradeDuplicatePorts(scanned)
 
         let suggestedInfraCheck = scanComposeInfra(in: standardizedRoot)
@@ -131,6 +135,115 @@ enum ProjectScanner {
             return ScannedServiceCandidate(service: service, hasNestDependency: false)
         }
 
+        if let python = scanPythonService(in: directory, relativeDirectory: relativeDirectory, name: name) {
+            return python
+        }
+        if let java = scanSpringService(in: directory, relativeDirectory: relativeDirectory, name: name) {
+            return java
+        }
+        if let php = scanPHPService(in: directory, relativeDirectory: relativeDirectory, name: name) {
+            return php
+        }
+
+        return nil
+    }
+
+    // MARK: - Python / Java / PHP
+
+    /// Python per convenzioni: `manage.py` (Django), altrimenti pyproject/requirements con
+    /// framework riconoscibile (FastAPI → uvicorn, Flask → flask run), altrimenti `main.py`
+    /// generico. Una cartella con soli requirements e nessun entrypoint non è un backend.
+    private static func scanPythonService(in directory: URL, relativeDirectory: String, name: String) -> ScannedServiceCandidate? {
+        let fileManager = FileManager.default
+        func make(_ command: String, _ hint: String) -> ScannedServiceCandidate {
+            let service = ScannedService(
+                name: name,
+                relativeDirectory: relativeDirectory,
+                command: command,
+                readiness: readiness(forDirectory: directory, hasNestDependency: false),
+                sourceHint: hint
+            )
+            return ScannedServiceCandidate(service: service, hasNestDependency: false)
+        }
+
+        if fileManager.fileExists(atPath: directory.appendingPathComponent("manage.py").path) {
+            return make("python manage.py runserver", "manage.py (Django)")
+        }
+
+        for manifest in ["pyproject.toml", "requirements.txt"] {
+            let url = directory.appendingPathComponent(manifest)
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            let lowercased = text.lowercased()
+            if lowercased.contains("fastapi") {
+                return make("uvicorn main:app --reload", "\(manifest) (FastAPI)")
+            }
+            if lowercased.contains("flask") {
+                return make("flask run", "\(manifest) (Flask)")
+            }
+            if fileManager.fileExists(atPath: directory.appendingPathComponent("main.py").path) {
+                return make("python main.py", manifest)
+            }
+        }
+        return nil
+    }
+
+    /// Java solo se Spring Boot (un pom/gradle generico è spesso una libreria, non un
+    /// backend avviabile). Preferisce il wrapper del progetto (mvnw/gradlew) se presente.
+    private static func scanSpringService(in directory: URL, relativeDirectory: String, name: String) -> ScannedServiceCandidate? {
+        let fileManager = FileManager.default
+        func make(_ command: String, _ hint: String) -> ScannedServiceCandidate {
+            let service = ScannedService(
+                name: name,
+                relativeDirectory: relativeDirectory,
+                command: command,
+                readiness: readiness(forDirectory: directory, hasNestDependency: false),
+                sourceHint: hint
+            )
+            return ScannedServiceCandidate(service: service, hasNestDependency: false)
+        }
+
+        let pomURL = directory.appendingPathComponent("pom.xml")
+        if let pom = try? String(contentsOf: pomURL, encoding: .utf8),
+           pom.lowercased().contains("spring-boot") {
+            let hasWrapper = fileManager.fileExists(atPath: directory.appendingPathComponent("mvnw").path)
+            return make(hasWrapper ? "./mvnw spring-boot:run" : "mvn spring-boot:run",
+                        "pom.xml (Spring Boot)")
+        }
+
+        for gradleFile in ["build.gradle", "build.gradle.kts"] {
+            let url = directory.appendingPathComponent(gradleFile)
+            guard let gradle = try? String(contentsOf: url, encoding: .utf8),
+                  gradle.lowercased().contains("springframework") || gradle.lowercased().contains("spring-boot") else { continue }
+            let hasWrapper = fileManager.fileExists(atPath: directory.appendingPathComponent("gradlew").path)
+            return make(hasWrapper ? "./gradlew bootRun" : "gradle bootRun",
+                        "\(gradleFile) (Spring Boot)")
+        }
+        return nil
+    }
+
+    /// PHP: `artisan` (Laravel, `serve` di default su 8000), altrimenti composer.json +
+    /// index.php col server built-in su 8080. Le porte sono quelle imposte dal COMANDO
+    /// suggerito, quindi coerenti con la readiness per costruzione.
+    private static func scanPHPService(in directory: URL, relativeDirectory: String, name: String) -> ScannedServiceCandidate? {
+        let fileManager = FileManager.default
+        func make(_ command: String, _ hint: String, port: UInt16) -> ScannedServiceCandidate {
+            let service = ScannedService(
+                name: name,
+                relativeDirectory: relativeDirectory,
+                command: command,
+                readiness: StoredReadiness(kind: .port, port: port, marker: nil),
+                sourceHint: hint
+            )
+            return ScannedServiceCandidate(service: service, hasNestDependency: false)
+        }
+
+        if fileManager.fileExists(atPath: directory.appendingPathComponent("artisan").path) {
+            return make("php artisan serve", "artisan (Laravel)", port: 8000)
+        }
+        if fileManager.fileExists(atPath: directory.appendingPathComponent("composer.json").path),
+           fileManager.fileExists(atPath: directory.appendingPathComponent("index.php").path) {
+            return make("php -S localhost:8080", "composer.json", port: 8080)
+        }
         return nil
     }
 
@@ -250,20 +363,22 @@ enum ProjectScanner {
 
     // MARK: - docker-compose infra detection
 
-    private static func scanComposeInfra(in root: URL) -> StoredInfraCheck? {
+    private static func composeFiles(in root: URL) -> [URL] {
         let fileManager = FileManager.default
         guard let entries = try? fileManager.contentsOfDirectory(
             at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        ) else { return nil }
+        ) else { return [] }
 
-        let composeFiles = entries.filter { url in
+        return entries.filter { url in
             let name = url.lastPathComponent
             return composeFileNames.contains(name)
                 || (name.hasPrefix("docker-compose.") && name.hasSuffix(".yml"))
                 || (name.hasPrefix("docker-compose.") && name.hasSuffix(".yaml"))
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
 
-        for composeFile in composeFiles {
+    private static func scanComposeInfra(in root: URL) -> StoredInfraCheck? {
+        for composeFile in composeFiles(in: root) {
             guard let text = try? String(contentsOf: composeFile, encoding: .utf8) else { continue }
             let lowercasedText = text.lowercased()
             for signature in infraSignatures where lowercasedText.contains(signature.needle) {
@@ -271,6 +386,114 @@ enum ProjectScanner {
             }
         }
         return nil
+    }
+
+    // MARK: - docker-compose service detection
+
+    /// File compose "di default" per la CLI `docker compose`: per questi il comando
+    /// suggerito non ha bisogno di `-f`.
+    private static let composeDefaultFileNames: Set<String> = [
+        "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml",
+    ]
+
+    /// Compose file da cui estrarre i servizi: quello di default se presente, altrimenti
+    /// il primo in ordine alfabetico (deterministico). UNO solo: varianti dev/prod dello
+    /// stesso progetto duplicherebbero i servizi.
+    private static func preferredComposeFile(in root: URL) -> URL? {
+        let files = composeFiles(in: root)
+        return files.first { composeDefaultFileNames.contains($0.lastPathComponent) } ?? files.first
+    }
+
+    /// Servizi top-level del compose file preferito, ESCLUSI quelli che sembrano
+    /// infrastruttura (nome o image che matcha `infraSignatures`): quelli restano
+    /// appannaggio della spia infra, non diventano backend avviabili.
+    /// Parsing line-based (indentazione convenzionale a 2 spazi): Foundation non ha un
+    /// parser YAML e per questi layout non serve.
+    private static func scanComposeServices(in root: URL) -> [ScannedServiceCandidate] {
+        guard let composeFile = preferredComposeFile(in: root),
+              let text = try? String(contentsOf: composeFile, encoding: .utf8) else { return [] }
+        let fileName = composeFile.lastPathComponent
+        let composePrefix = composeDefaultFileNames.contains(fileName)
+            ? "docker compose"
+            : "docker compose -f \(fileName)"
+
+        var candidates: [ScannedServiceCandidate] = []
+        var inServices = false
+        var currentName: String?
+        var currentIsInfra = false
+        var currentHostPort: UInt16?
+        var inPortsList = false
+
+        func flushCurrentService() {
+            defer { currentName = nil }
+            guard let name = currentName, !currentIsInfra else { return }
+            let readiness = currentHostPort.map { StoredReadiness(kind: .port, port: $0, marker: nil) }
+                ?? StoredReadiness(kind: .processAlive, port: nil, marker: nil)
+            let service = ScannedService(
+                name: name,
+                relativeDirectory: "",
+                command: "\(composePrefix) up \(name)",
+                readiness: readiness,
+                sourceHint: "\(fileName) (\(name))"
+            )
+            candidates.append(ScannedServiceCandidate(service: service, hasNestDependency: false))
+        }
+
+        for rawLine in text.split(whereSeparator: \.isNewline) {
+            let line = String(rawLine)
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+            let indent = line.prefix(while: { $0 == " " }).count
+
+            if indent == 0 {
+                flushCurrentService()
+                inServices = trimmed == "services:"
+                continue
+            }
+            guard inServices else { continue }
+
+            if indent == 2, trimmed.hasSuffix(":"), !trimmed.contains(" ") {
+                flushCurrentService()
+                let name = String(trimmed.dropLast()).lowercased()
+                currentName = name
+                currentIsInfra = infraSignatures.contains { name.contains($0.needle) }
+                currentHostPort = nil
+                inPortsList = false
+                continue
+            }
+            guard currentName != nil else { continue }
+
+            if trimmed.hasPrefix("image:") {
+                let image = trimmed.dropFirst("image:".count)
+                    .trimmingCharacters(in: .whitespaces).lowercased()
+                if infraSignatures.contains(where: { image.contains($0.needle) }) {
+                    currentIsInfra = true
+                }
+            } else if trimmed == "ports:" {
+                inPortsList = true
+            } else if inPortsList, trimmed.hasPrefix("-") {
+                if currentHostPort == nil {
+                    currentHostPort = hostPort(fromComposePortEntry: trimmed)
+                }
+            } else if !trimmed.hasPrefix("-") {
+                // Altra chiave del servizio: l'eventuale lista `ports:` è finita.
+                inPortsList = false
+            }
+        }
+        flushCurrentService()
+        return candidates
+    }
+
+    /// Porta HOST da una entry di `ports:` in sintassi breve: `- "8080:80"` → 8080,
+    /// `- "127.0.0.1:9090:80"` → 9090 (penultimo segmento). Entry senza mapping esplicito
+    /// (`- "8080"`, porta host assegnata dal demone) → `nil`.
+    private static func hostPort(fromComposePortEntry entry: String) -> UInt16? {
+        let value = entry.dropFirst()  // toglie "-"
+            .trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        let parts = value.split(separator: ":")
+        guard parts.count >= 2 else { return nil }
+        return UInt16(parts[parts.count - 2])
     }
 
     // MARK: - Path helpers

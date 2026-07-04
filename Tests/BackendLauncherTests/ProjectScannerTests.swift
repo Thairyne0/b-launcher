@@ -384,4 +384,221 @@ import Testing
         #expect(betaNest.readiness == StoredReadiness(kind: .logMarker, port: nil, marker: "successfully started"))
         #expect(betaNest.sourceHint.hasSuffix(" — porta 5000 duplicata"))
     }
+
+    // MARK: - Python
+
+    @Test func managePyDetectedAsDjango() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("backend-py")
+        try write("#!/usr/bin/env python\n", to: dir.appendingPathComponent("manage.py"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "python manage.py runserver")
+        #expect(service.sourceHint == "manage.py (Django)")
+        #expect(service.readiness == StoredReadiness(kind: .processAlive, port: nil, marker: nil))
+    }
+
+    @Test func pyprojectFastapiUsesUvicorn() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("api-py")
+        try write("[project]\ndependencies = [\"fastapi\", \"uvicorn\"]\n",
+                  to: dir.appendingPathComponent("pyproject.toml"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "uvicorn main:app --reload")
+        #expect(service.sourceHint == "pyproject.toml (FastAPI)")
+    }
+
+    @Test func requirementsFlaskUsesFlaskRun() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("web-py")
+        try write("Flask==3.0\n", to: dir.appendingPathComponent("requirements.txt"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "flask run")
+        #expect(service.sourceHint == "requirements.txt (Flask)")
+    }
+
+    @Test func genericPythonNeedsMainPy() throws {
+        let root = try tempRoot()
+        let withMain = root.appendingPathComponent("worker")
+        try write("requests\n", to: withMain.appendingPathComponent("requirements.txt"))
+        try write("print('hi')\n", to: withMain.appendingPathComponent("main.py"))
+        let withoutMain = root.appendingPathComponent("lib-only")
+        try write("requests\n", to: withoutMain.appendingPathComponent("requirements.txt"))
+
+        let result = ProjectScanner.scan(root: root)
+
+        #expect(result.services.count == 1)
+        let service = try #require(result.services.first)
+        #expect(service.relativeDirectory == "worker")
+        #expect(service.command == "python main.py")
+        #expect(service.sourceHint == "requirements.txt")
+    }
+
+    @Test func pythonReadinessUsesEnvPort() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("api-py")
+        try write("fastapi\n", to: dir.appendingPathComponent("requirements.txt"))
+        try write("PORT=8001\n", to: dir.appendingPathComponent(".env"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.readiness == StoredReadiness(kind: .port, port: 8001, marker: nil))
+    }
+
+    @Test func packageJsonTakesPrecedenceOverPython() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("hybrid")
+        try write("{ \"scripts\": { \"dev\": \"vite\" } }", to: dir.appendingPathComponent("package.json"))
+        try write("#!/usr/bin/env python\n", to: dir.appendingPathComponent("manage.py"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "npm run dev")
+    }
+
+    // MARK: - Java / Spring
+
+    @Test func mavenSpringBootPrefersWrapper() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("spring-api")
+        try write("<project><artifactId>spring-boot-starter-parent</artifactId></project>",
+                  to: dir.appendingPathComponent("pom.xml"))
+        try write("#!/bin/sh\n", to: dir.appendingPathComponent("mvnw"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "./mvnw spring-boot:run")
+        #expect(service.sourceHint == "pom.xml (Spring Boot)")
+        #expect(service.readiness == StoredReadiness(kind: .processAlive, port: nil, marker: nil))
+    }
+
+    @Test func mavenSpringBootWithoutWrapperUsesMvn() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("spring-api")
+        try write("<project>spring-boot</project>", to: dir.appendingPathComponent("pom.xml"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "mvn spring-boot:run")
+    }
+
+    @Test func gradleSpringBootUsesBootRun() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("spring-gradle")
+        try write("plugins { id 'org.springframework.boot' version '3.2.0' }",
+                  to: dir.appendingPathComponent("build.gradle"))
+        try write("#!/bin/sh\n", to: dir.appendingPathComponent("gradlew"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "./gradlew bootRun")
+        #expect(service.sourceHint == "build.gradle (Spring Boot)")
+    }
+
+    @Test func nonSpringJavaIsSkipped() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("java-lib")
+        try write("<project><artifactId>commons-utils</artifactId></project>",
+                  to: dir.appendingPathComponent("pom.xml"))
+
+        #expect(ProjectScanner.scan(root: root).services.isEmpty)
+    }
+
+    // MARK: - PHP
+
+    @Test func laravelArtisanDetected() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("laravel-app")
+        try write("<?php // artisan\n", to: dir.appendingPathComponent("artisan"))
+        try write("{}", to: dir.appendingPathComponent("composer.json"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "php artisan serve")
+        #expect(service.sourceHint == "artisan (Laravel)")
+        #expect(service.readiness == StoredReadiness(kind: .port, port: 8000, marker: nil))
+    }
+
+    @Test func plainPhpWithIndexUsesBuiltinServer() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("php-site")
+        try write("{}", to: dir.appendingPathComponent("composer.json"))
+        try write("<?php echo 'ciao';\n", to: dir.appendingPathComponent("index.php"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "php -S localhost:8080")
+        #expect(service.sourceHint == "composer.json")
+        #expect(service.readiness == StoredReadiness(kind: .port, port: 8080, marker: nil))
+    }
+
+    @Test func composerWithoutIndexIsSkipped() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("php-lib")
+        try write("{}", to: dir.appendingPathComponent("composer.json"))
+
+        #expect(ProjectScanner.scan(root: root).services.isEmpty)
+    }
+
+    // MARK: - docker-compose (servizi)
+
+    @Test func composeServicesDetectedInfraExcluded() throws {
+        let root = try tempRoot()
+        try write("""
+        services:
+          app:
+            build: .
+            ports:
+              - "8080:80"
+          nats:
+            image: nats:2
+            ports:
+              - "4222:4222"
+        """, to: root.appendingPathComponent("docker-compose.yml"))
+
+        let result = ProjectScanner.scan(root: root)
+
+        #expect(result.services.count == 1)
+        let service = try #require(result.services.first)
+        #expect(service.name == "app")
+        #expect(service.relativeDirectory == "")
+        #expect(service.command == "docker compose up app")
+        #expect(service.readiness == StoredReadiness(kind: .port, port: 8080, marker: nil))
+        #expect(service.sourceHint == "docker-compose.yml (app)")
+        // La spia infrastruttura continua a suggerire NATS.
+        #expect(result.suggestedInfraCheck == StoredInfraCheck(label: "NATS", port: 4222))
+    }
+
+    @Test func composeInfraExcludedByImageToo() throws {
+        let root = try tempRoot()
+        try write("""
+        services:
+          cache:
+            image: redis:7
+        """, to: root.appendingPathComponent("docker-compose.yml"))
+
+        #expect(ProjectScanner.scan(root: root).services.isEmpty)
+    }
+
+    @Test func composeCustomFileNameUsesDashF() throws {
+        let root = try tempRoot()
+        try write("""
+        services:
+          app:
+            build: .
+        """, to: root.appendingPathComponent("docker-compose.dev.yml"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "docker compose -f docker-compose.dev.yml up app")
+        #expect(service.readiness == StoredReadiness(kind: .processAlive, port: nil, marker: nil))
+    }
+
+    @Test func composeHostPortWithBindAddressParsed() throws {
+        let root = try tempRoot()
+        try write("""
+        services:
+          app:
+            ports:
+              - "127.0.0.1:9090:80"
+        """, to: root.appendingPathComponent("compose.yml"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.readiness == StoredReadiness(kind: .port, port: 9090, marker: nil))
+        #expect(service.command == "docker compose up app")
+    }
 }
