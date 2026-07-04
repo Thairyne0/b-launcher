@@ -277,4 +277,111 @@ import Testing
         let service = try #require(result.services.first)
         #expect(service.readiness == StoredReadiness(kind: .port, port: 3000, marker: nil))
     }
+
+    // MARK: - .env quoted values (B2)
+
+    @Test func envPortDoubleQuoted() throws {
+        let root = try tempRoot()
+        let serviceDir = root.appendingPathComponent("quoted-double")
+        try write("""
+        { "scripts": { "start": "node index.js" } }
+        """, to: serviceDir.appendingPathComponent("package.json"))
+        try write("PORT=\"3000\"\n", to: serviceDir.appendingPathComponent(".env"))
+
+        let result = ProjectScanner.scan(root: root)
+
+        let service = try #require(result.services.first)
+        #expect(service.readiness == StoredReadiness(kind: .port, port: 3000, marker: nil))
+    }
+
+    @Test func envPortSingleQuoted() throws {
+        let root = try tempRoot()
+        let serviceDir = root.appendingPathComponent("quoted-single")
+        try write("""
+        { "scripts": { "start": "node index.js" } }
+        """, to: serviceDir.appendingPathComponent("package.json"))
+        try write("PORT='8080'\n", to: serviceDir.appendingPathComponent(".env"))
+
+        let result = ProjectScanner.scan(root: root)
+
+        let service = try #require(result.services.first)
+        #expect(service.readiness == StoredReadiness(kind: .port, port: 8080, marker: nil))
+    }
+
+    @Test func envPortUnquotedWithInlineComment() throws {
+        let root = try tempRoot()
+        let serviceDir = root.appendingPathComponent("unquoted-comment")
+        try write("""
+        { "scripts": { "start": "node index.js" } }
+        """, to: serviceDir.appendingPathComponent("package.json"))
+        try write("PORT=3000 # web\n", to: serviceDir.appendingPathComponent(".env"))
+
+        let result = ProjectScanner.scan(root: root)
+
+        let service = try #require(result.services.first)
+        #expect(service.readiness == StoredReadiness(kind: .port, port: 3000, marker: nil))
+    }
+
+    @Test func envPortQuotedWithCommentAfter() throws {
+        let root = try tempRoot()
+        let serviceDir = root.appendingPathComponent("quoted-comment")
+        try write("""
+        { "scripts": { "start": "node index.js" } }
+        """, to: serviceDir.appendingPathComponent("package.json"))
+        try write("PORT=\"3000\" # web\n", to: serviceDir.appendingPathComponent(".env"))
+
+        let result = ProjectScanner.scan(root: root)
+
+        let service = try #require(result.services.first)
+        #expect(service.readiness == StoredReadiness(kind: .port, port: 3000, marker: nil))
+    }
+
+    // MARK: - Duplicate-port downgrade (B3)
+
+    @Test func duplicatePortDowngradesSecondService() throws {
+        let root = try tempRoot()
+        // "alpha" sorts before "beta": alpha keeps .port, beta (same port) is downgraded.
+        try write("""
+        { "scripts": { "start": "node index.js" } }
+        """, to: root.appendingPathComponent("alpha").appendingPathComponent("package.json"))
+        try write("PORT=4000\n", to: root.appendingPathComponent("alpha").appendingPathComponent(".env"))
+
+        try write("""
+        { "scripts": { "start": "node index.js" } }
+        """, to: root.appendingPathComponent("beta").appendingPathComponent("package.json"))
+        try write("PORT=4000\n", to: root.appendingPathComponent("beta").appendingPathComponent(".env"))
+
+        let result = ProjectScanner.scan(root: root)
+
+        #expect(result.services.count == 2)
+        let alpha = try #require(result.services.first { $0.relativeDirectory == "alpha" })
+        let beta = try #require(result.services.first { $0.relativeDirectory == "beta" })
+
+        #expect(alpha.readiness == StoredReadiness(kind: .port, port: 4000, marker: nil))
+        #expect(beta.readiness == StoredReadiness(kind: .processAlive, port: nil, marker: nil))
+        #expect(beta.sourceHint.hasSuffix(" — porta 4000 duplicata"))
+        #expect(beta.sourceHint.hasPrefix("package.json"))
+    }
+
+    @Test func duplicatePortDowngradesToNestLogMarkerWhenApplicable() throws {
+        let root = try tempRoot()
+        try write("""
+        { "scripts": { "start": "node index.js" } }
+        """, to: root.appendingPathComponent("alpha").appendingPathComponent("package.json"))
+        try write("PORT=5000\n", to: root.appendingPathComponent("alpha").appendingPathComponent(".env"))
+
+        try write("""
+        {
+          "scripts": { "start": "nest start" },
+          "dependencies": { "@nestjs/core": "^10.0.0" }
+        }
+        """, to: root.appendingPathComponent("beta-nest").appendingPathComponent("package.json"))
+        try write("PORT=5000\n", to: root.appendingPathComponent("beta-nest").appendingPathComponent(".env"))
+
+        let result = ProjectScanner.scan(root: root)
+
+        let betaNest = try #require(result.services.first { $0.relativeDirectory == "beta-nest" })
+        #expect(betaNest.readiness == StoredReadiness(kind: .logMarker, port: nil, marker: "successfully started"))
+        #expect(betaNest.sourceHint.hasSuffix(" — porta 5000 duplicata"))
+    }
 }

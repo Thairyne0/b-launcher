@@ -31,6 +31,36 @@ func makeTCPListener() -> (fd: Int32, port: UInt16) {
     return (fd, UInt16(bigEndian: bound.sin_port))
 }
 
+/// Listener TCP su ::1 (IPv6 loopback), porta assegnata dal kernel. Chiudere con `close(fd)`.
+func makeTCPListenerV6() -> (fd: Int32, port: UInt16) {
+    let fd = socket(AF_INET6, SOCK_STREAM, 0)
+    precondition(fd >= 0, "socket() failed")
+    var yes: Int32 = 1
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
+
+    var addr = sockaddr_in6()
+    addr.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+    addr.sin6_family = sa_family_t(AF_INET6)
+    addr.sin6_port = 0
+    addr.sin6_addr = in6addr_loopback
+    let bindResult = withUnsafePointer(to: &addr) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in6>.size))
+        }
+    }
+    precondition(bindResult == 0, "bind() failed")
+    precondition(listen(fd, 8) == 0, "listen() failed")
+
+    var bound = sockaddr_in6()
+    var len = socklen_t(MemoryLayout<sockaddr_in6>.size)
+    withUnsafeMutablePointer(to: &bound) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            _ = getsockname(fd, $0, &len)
+        }
+    }
+    return (fd, UInt16(bigEndian: bound.sin6_port))
+}
+
 /// Polling asincrono di una condizione con timeout. Ritorna true se soddisfatta in tempo.
 func waitUntil(timeout: TimeInterval = 10, interval: TimeInterval = 0.05,
                _ condition: @escaping () -> Bool) async -> Bool {
