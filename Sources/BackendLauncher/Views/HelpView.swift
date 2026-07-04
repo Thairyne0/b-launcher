@@ -48,7 +48,8 @@ enum HelpContent {
                 .bullets([
                     "Porta TCP — diventa verde quando la porta risponde.",
                     "Marker nei log — diventa verde quando compare un testo specifico nei log (default \"successfully started\").",
-                    "Sempre pronto — diventa verde non appena il processo parte."
+                    "Sempre pronto — diventa verde non appena il processo parte.",
+                    "Health check HTTP — diventa verde quando GET http://127.0.0.1:porta+path (es. /health) risponde 2xx. Più preciso della porta per backend che aprono il socket prima di essere operativi; i redirect non contano come pronto."
                 ]),
                 .subheading("Stati e colori"),
                 .bullets([
@@ -69,7 +70,7 @@ enum HelpContent {
                 .paragraph("Il menu \"＋ Aggiungi progetto\" in fondo alla sidebar ha quattro voci:"),
                 .bullets([
                     "Nuovo progetto — crea un progetto vuoto, poi aggiungi i backend a mano (cartella, comando, criterio di prontezza).",
-                    "Scansiona cartella… — analizza una cartella esistente (monorepo o singolo repo) e propone i backend riconosciuti, già pronti da rivedere e creare.",
+                    "Scansiona cartella… — analizza una cartella esistente (monorepo o singolo repo) e propone i backend riconosciuti, già pronti da rivedere e creare. Riconosce Node/NestJS, Go, Rust, Python (Django/FastAPI/Flask), Java Spring Boot, PHP (Laravel) e i servizi di un docker-compose.yml (esclusa l'infrastruttura tipo nats/redis/postgres, suggerita come spia).",
                     "Importa progetto… — legge un template .blauncher.json esportato da un collega.",
                     "Genera con Claude Code… — copia un prompt pronto per far generare il template a Claude Code."
                 ]),
@@ -143,9 +144,11 @@ enum HelpContent {
                 .subheading("File .env mancante"),
                 .paragraph("Un backend appena clonato di solito non ha il file .env (è escluso da git). La card lo segnala con un badge cliccabile: si apre una finestra dove incolli il contenuto ricevuto da un collega, o lo importi da un file, e il launcher crea .env nella cartella del backend."),
                 .bullets([
+                    "Se il backend ha un .env.example (o .env.sample/.env.template/.env.dist), l'editor parte precompilato da quello: sostituisci i valori e crea.",
                     "Prima di scrivere verifica che .env sia coperto dal .gitignore: se non lo è ti avvisa (rischio di committare i segreti) e chiede una conferma esplicita.",
                     "Non sovrascrive mai un .env esistente.",
-                    "Il file è creato leggibile solo dal tuo utente e il contenuto incollato non finisce mai nei log del launcher."
+                    "Il file è creato leggibile solo dal tuo utente e il contenuto incollato non finisce mai nei log del launcher.",
+                    "Backend che non usano .env (Go a flag, Java con application.properties…): nel form di modifica c'è un toggle per nascondere il badge per quel servizio."
                 ]),
                 .subheading("Sincronizza (template del team)"),
                 .paragraph("Se il progetto è stato importato da un template .blauncher.json e quel file cambia su disco (tipicamente dopo un git pull che porta una revisione aggiornata da un collega), un banner \"Il template del progetto è cambiato\" appare sopra la griglia del progetto. \"Sincronizza\" rilegge il file e sostituisce backend, profili e spia infrastruttura, preservando nome e colore del progetto. I backend in esecuzione non vengono fermati: le loro modifiche restano in sospeso e si applicano al prossimo riavvio, come per una modifica manuale.")

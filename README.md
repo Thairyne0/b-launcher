@@ -72,17 +72,29 @@ cartella…", un file `.json` precarica l'import.
   readiness:
   - **Porta TCP**: pronto quando la porta indicata risulta aperta;
   - **Marker nei log**: pronto quando una stringa specifica compare nell'output;
-  - **Sempre pronto (processo vivo)**: pronto non appena il processo parte.
+  - **Sempre pronto (processo vivo)**: pronto non appena il processo parte;
+  - **Health check HTTP**: pronto quando `GET http://127.0.0.1:porta+path`
+    (es. `/health`) risponde 2xx — più preciso della sola porta per backend che
+    aprono il socket prima di essere davvero operativi. I redirect non contano
+    come pronto.
   - Se il comando contiene "docker", un avviso ricorda che il launcher non
     ferma i container (vedi "Limitazione Docker" sotto).
+  - Toggle "questo backend non usa un file .env" per nascondere il badge
+    ".env mancante" sugli stack che configurano altrove (Go a flag, Java con
+    application.properties, ecc.).
 - **Modifica…** / **Elimina** su un servizio: tasto destro sulla riga in sidebar
   (modifica disabilitata mentre il servizio è in esecuzione). Stesso schema per i
   progetti (**Elimina progetto** da tasto destro sulla riga progetto).
-- **Scanner progetti**: `Scansiona cartella…` riconosce i backend Node/NestJS di
-  un monorepo (o repo singolo) leggendo `package.json` e propone nome, comando e
-  readiness già compilati, con la possibilità di includere/escludere ogni
-  backend e la spia infrastruttura suggerita (da `docker-compose.yml`) prima di
-  creare il progetto. Se due backend risultano sulla stessa porta, il secondo
+- **Scanner progetti**: `Scansiona cartella…` riconosce i backend di un monorepo
+  (o repo singolo) e propone nome, comando e readiness già compilati, con la
+  possibilità di includere/escludere ogni backend e la spia infrastruttura
+  suggerita (da `docker-compose.yml`) prima di creare il progetto. Stack
+  riconosciuti: Node/NestJS (`package.json`, npm/yarn/pnpm), Go (`go.mod`),
+  Rust (`Cargo.toml`), Python (Django via `manage.py`, FastAPI via uvicorn,
+  Flask, `main.py` generico), Java Spring Boot (`pom.xml`/`build.gradle`, con
+  preferenza per `mvnw`/`gradlew`), PHP (Laravel via `artisan`, server built-in
+  con `index.php`) e i servizi di un `docker-compose.yml` (esclusa
+  l'infrastruttura tipo nats/redis/postgres, che resta alla spia infra). Se due backend risultano sulla stessa porta, il secondo
   viene automaticamente declassato a un altro criterio di prontezza invece di
   lasciare un conflitto — rivedibile dopo con "Modifica…".
 
@@ -150,7 +162,9 @@ torna disponibile).
   `.env` (tipico backend appena clonato), la card mostra un badge cliccabile —
   e la sidebar un'icona 🔑 accanto al backend — che apre uno sheet: incolli il
   contenuto ricevuto da un collega (o lo importi da file) e il launcher crea
-  `working directory/.env` per te. Sicurezza: verifica
+  `working directory/.env` per te. Se il backend ha un `.env.example` (o
+  `.env.sample`/`.env.template`/`.env.dist`), l'editor parte precompilato da
+  quello. Il badge si può disattivare per singolo backend dal form di modifica. Sicurezza: verifica
   che `.env` sia coperto dal `.gitignore` (altrimenti avvisa e chiede conferma
   esplicita), non sovrascrive mai un file esistente (creazione atomica), permessi
   `0600`, e il contenuto incollato non finisce mai nei log o nelle impostazioni
