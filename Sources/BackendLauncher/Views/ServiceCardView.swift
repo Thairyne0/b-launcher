@@ -26,7 +26,7 @@ struct ServiceCardView: View {
     /// Stesso pattern cheap a render time di `directoryIsMissing`: una `stat`, nessuna cache —
     /// il badge sparisce da solo al primo ridisegno dopo la creazione del file.
     private var envFileIsMissing: Bool {
-        !directoryIsMissing && !EnvFileWriter.envFileExists(in: controller.config.workingDirectory)
+        EnvFileWriter.envFileMissing(in: controller.config.workingDirectory)
     }
 
     /// Colore accento del progetto proprietario, se impostato e valido — usato solo per il

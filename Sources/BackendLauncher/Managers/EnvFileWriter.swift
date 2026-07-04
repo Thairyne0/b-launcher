@@ -22,6 +22,16 @@ enum EnvFileWriter {
         FileManager.default.fileExists(atPath: directory.appendingPathComponent(".env").path)
     }
 
+    /// Condizione del badge UI ".env mancante": la directory esiste ma non contiene `.env`.
+    /// Directory inesistente → `false`: quel caso ha già il suo indicatore dedicato
+    /// ("cartella mancante") e un badge .env sarebbe rumore.
+    static func envFileMissing(in directory: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return false }
+        return !envFileExists(in: directory)
+    }
+
     /// Esito di `git -C <dir> check-ignore -q .env`. Rispetta anche la config globale
     /// dell'utente (un `core.excludesfile` che copre `.env` protegge dal commit tanto quanto
     /// il `.gitignore` di repo); `environment` è iniettabile solo per rendere i test immuni

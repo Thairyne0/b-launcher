@@ -40,20 +40,28 @@ struct EnvCreateSheet: View {
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
 
+            // `scrollContentBackground(.hidden)` + sfondo proprio: il background di default
+            // dell'NSTextView non segue il raggio dell'angolo e stona sul glass della sheet.
+            // Placeholder: leading 13 = 8 di padding editor + 5 di `lineFragmentPadding`
+            // dell'NSTextView sottostante, così è allineato al primo carattere digitato.
             TextEditor(text: $content)
                 .font(.callout.monospaced())
-                .frame(minHeight: 180)
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .frame(minHeight: 190)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.45),
+                            in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
                 .overlay(alignment: .topLeading) {
                     if content.isEmpty {
                         Text("Incolla qui il contenuto del .env (es. ricevuto da un collega)…")
-                            .font(.callout)
+                            .font(.callout.monospaced())
                             .foregroundStyle(.tertiary)
                             .padding(.top, 8)
-                            .padding(.leading, 5)
+                            .padding(.leading, 13)
                             .allowsHitTesting(false)
                     }
                 }
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
 
             if !contentIsEmpty {
                 Label(keyCount == 1 ? "1 variabile rilevata" : "\(keyCount) variabili rilevate",

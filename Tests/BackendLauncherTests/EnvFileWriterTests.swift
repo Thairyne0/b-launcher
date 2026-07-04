@@ -43,6 +43,15 @@ import Testing
         #expect(EnvFileWriter.envFileExists(in: dir))
     }
 
+    @Test func envFileMissingOnlyWhenDirectoryExistsWithoutEnv() throws {
+        let dir = try tempDir()
+        #expect(EnvFileWriter.envFileMissing(in: dir))
+        try "PORT=4000".write(to: dir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+        #expect(!EnvFileWriter.envFileMissing(in: dir))
+        // Directory inesistente: nessun badge (c'è già l'indicatore "cartella mancante").
+        #expect(!EnvFileWriter.envFileMissing(in: dir.appendingPathComponent("non-esiste")))
+    }
+
     // MARK: - createEnvFile
 
     @Test func createWritesContentWithFinalNewlineAndOwnerOnlyPermissions() throws {

@@ -502,6 +502,15 @@ struct SidebarView: View {
                     .help("Modifiche in sospeso: ferma il backend per applicarle")
             }
             Spacer()
+            // Stessa condizione (cheap, a render time) del badge sulla card: qui è solo un
+            // indicatore — la creazione guidata si apre dal badge cliccabile sulla card.
+            if EnvFileWriter.envFileMissing(in: controller.config.workingDirectory) {
+                Image(systemName: "key.slash")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .help("File .env mancante — clicca il badge sulla card per crearlo")
+                    .accessibilityLabel("File .env mancante")
+            }
             if controller.logs.errorCount > 0 {
                 Text("\(controller.logs.errorCount)")
                     .font(.caption2.bold())
