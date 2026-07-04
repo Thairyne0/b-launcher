@@ -13,10 +13,24 @@ backend si definiscono dalla UI e vivono su disco.
   risolvono lo stesso `PATH` di un terminale interattivo (es. `npm` installato via
   Homebrew)
 
-## Uso
+## Installazione (per il team)
+
+```bash
+git clone git@github.com:Thairyne0/backend-launcher.git
+cd backend-launcher
+make install
+```
+
+`make install` compila l'app e la copia in `/Applications`, poi la apre. La build
+è locale → nessun problema di Gatekeeper/quarantena. Al primo avvio la schermata
+di benvenuto spiega come configurare i tuoi progetti (wizard, import template, o
+generazione automatica con Claude Code). Per aggiornare: `git pull && make install`.
+
+## Uso (sviluppo)
 
 ```bash
 make run     # builda dist/Backend Launcher.app e la apre
+make install # builda e installa in /Applications
 make dev     # build + run veloce senza bundle (swift run)
 make test    # unit test
 make app     # builda solo il bundle .app
