@@ -56,6 +56,27 @@ import Testing
         #expect(reloaded.projects.first?.services.last?.name == "extra")
     }
 
+    @Test func envBadgeDisabledPersistsAndBridgesToConfig() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        var project = try #require(store.projects.first)
+        project.services.append(StoredService(
+            name: "no-env", directory: "/tmp/no-env", command: "true",
+            readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+            envBadgeDisabled: true))
+        store.replaceProject(project)
+        store.save()
+
+        let reloaded = ServiceStore(fileURL: url)
+        let reloadedProject = try #require(reloaded.projects.first)
+        #expect(reloadedProject.services.last?.envBadgeDisabled == true)
+
+        let configs = reloaded.serviceConfigs(for: reloadedProject)
+        #expect(configs.last?.envBadgeDisabled == true)
+        // Servizi senza il campo (file scritti da versioni precedenti): default false.
+        #expect(configs.first?.envBadgeDisabled == false)
+    }
+
     @Test func futureVersionFileIsPreservedNotOverwritten() throws {
         // File scritto da una versione futura dell'app (es. v2 con schema incompatibile):
         // non va trattato come v1 né sovrascritto — va messo da parte per non perdere dati

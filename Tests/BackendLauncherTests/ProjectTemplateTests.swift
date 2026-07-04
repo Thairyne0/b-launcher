@@ -115,6 +115,20 @@ import Testing
         #expect(decoded.templateVersion == 1)
     }
 
+    @Test func envBadgeDisabledSurvivesTemplateRoundTrip() throws {
+        let root = URL(fileURLWithPath: "/Users/dev/proj")
+        var stored = service("no-env", "/Users/dev/proj/no-env")
+        stored.envBadgeDisabled = true
+        let project = StoredProject(name: "P", services: [stored], profiles: [], infraCheck: nil)
+
+        let template = ProjectTemplateCodec.makeTemplate(from: project, root: root)
+        let data = try ProjectTemplateCodec.encode(template)
+        let decoded = try ProjectTemplateCodec.decode(data)
+        let rebuilt = try ProjectTemplateCodec.makeProject(from: decoded, root: root, nameOverride: nil)
+
+        #expect(rebuilt.services.first?.envBadgeDisabled == true)
+    }
+
     @Test func commonRootComputesSharedParentDirectory() throws {
         let common = ProjectTemplateCodec.commonRoot(forServiceDirectories: [
             "/Users/dev/Skillera/SKILLGATEWAY-BE",

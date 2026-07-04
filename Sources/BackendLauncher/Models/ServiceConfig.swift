@@ -36,6 +36,9 @@ struct ServiceConfig: Identifiable, Hashable {
     /// Nome SF Symbol da mostrare al posto dell'icona di default, da `StoredService`.
     /// Default `nil` in tutti gli init esistenti — nessuna rottura per i chiamanti storici.
     let symbolName: String?
+    /// `true` = il backend dichiara di non usare `.env`: la UI non mostra badge/icona
+    /// ".env mancante". Default `false` per tutti gli init esistenti.
+    var envBadgeDisabled: Bool = false
 
     /// Namespaced su `projectName` quando presente ("Progetto/nome"), altrimenti il nome
     /// nudo — questo mantiene `id == name` per ogni config costruita senza `projectName`

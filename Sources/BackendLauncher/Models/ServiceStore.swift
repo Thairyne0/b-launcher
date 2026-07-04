@@ -24,6 +24,10 @@ struct StoredService: Codable, Hashable {
     /// Additivo (schema resta v1): assente in un file scritto da una versione precedente
     /// dell'app, decodifica a `nil` grazie al default qui sotto.
     var symbolName: String? = nil
+    /// `true` = questo backend non usa un file `.env`: il badge/icona ".env mancante" va
+    /// nascosto. Optional e non Bool secco per l'additività dello schema (v1): assente nei
+    /// file vecchi → `nil` → trattato come `false` dal bridge.
+    var envBadgeDisabled: Bool? = nil
 }
 
 struct StoredInfraCheck: Codable, Hashable {
@@ -580,7 +584,7 @@ final class ServiceStore {
             case .processAlive:
                 readiness = .processAlive
             }
-            return ServiceConfig(
+            var config = ServiceConfig(
                 name: service.name,
                 directory: "",
                 command: service.command,
@@ -590,6 +594,8 @@ final class ServiceStore {
                 accentColorHex: project.accentColorHex,
                 symbolName: service.symbolName
             )
+            config.envBadgeDisabled = service.envBadgeDisabled ?? false
+            return config
         }
     }
 }

@@ -504,7 +504,8 @@ struct SidebarView: View {
             Spacer()
             // Stessa condizione (cheap, a render time) del badge sulla card: qui è solo un
             // indicatore — la creazione guidata si apre dal badge cliccabile sulla card.
-            if EnvFileWriter.envFileMissing(in: controller.config.workingDirectory) {
+            if !controller.config.envBadgeDisabled,
+               EnvFileWriter.envFileMissing(in: controller.config.workingDirectory) {
                 Image(systemName: "key.slash")
                     .font(.caption)
                     .foregroundStyle(.orange)

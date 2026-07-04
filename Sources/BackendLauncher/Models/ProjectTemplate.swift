@@ -15,6 +15,9 @@ struct ProjectTemplate: Codable {
         var relativeDirectory: String   // relativo alla root scelta all'export
         var command: String
         var readiness: StoredReadiness
+        /// Additivo: assente nei template vecchi → `nil`; le app vecchie che leggono un
+        /// template nuovo ignorano la chiave sconosciuta (nessun bump di versione).
+        var envBadgeDisabled: Bool? = nil
     }
 }
 
@@ -51,7 +54,8 @@ enum ProjectTemplateCodec {
                 name: service.name,
                 relativeDirectory: relativePath(forServiceDirectory: service.directory, root: standardizedRoot),
                 command: service.command,
-                readiness: service.readiness
+                readiness: service.readiness,
+                envBadgeDisabled: service.envBadgeDisabled
             )
         }
         return ProjectTemplate(
@@ -80,7 +84,8 @@ enum ProjectTemplateCodec {
                 name: templateService.name,
                 directory: resolvedDirectory(relativeDirectory: relative, root: standardizedRoot),
                 command: templateService.command,
-                readiness: templateService.readiness
+                readiness: templateService.readiness,
+                envBadgeDisabled: templateService.envBadgeDisabled
             )
         }
         let name = nameOverride?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false

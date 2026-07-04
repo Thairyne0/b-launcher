@@ -64,6 +64,7 @@ struct ServiceFormSheet: View {
     @State private var portText: String = ""
     @State private var marker: String = "successfully started"
     @State private var symbolName: String?
+    @State private var envBadgeDisabled = false
     @State private var saveError: String?
     /// Evita di mostrare "il nome non può essere vuoto" prima ancora che l'utente abbia
     /// interagito col form (fastidioso in modalità "add" a sheet appena aperta).
@@ -223,6 +224,10 @@ struct ServiceFormSheet: View {
 
             iconSection
 
+            Toggle("Questo backend non usa un file .env (nascondi il badge \".env mancante\")",
+                   isOn: $envBadgeDisabled)
+                .font(.callout)
+
             if let saveError {
                 Text(saveError)
                     .font(.callout)
@@ -304,6 +309,7 @@ struct ServiceFormSheet: View {
             readinessKind = .processAlive
         }
         symbolName = service.symbolName
+        envBadgeDisabled = service.envBadgeDisabled ?? false
     }
 
     private func save() {
@@ -318,9 +324,12 @@ struct ServiceFormSheet: View {
         case .processAlive:
             readiness = StoredReadiness(kind: .processAlive, port: nil, marker: nil)
         }
+        // `envBadgeDisabled`: `true` esplicito, `nil` quando off — il JSON resta pulito
+        // (nessuna chiave) per i servizi che usano il default.
         let service = StoredService(name: trimmedName, directory: folderURL.path,
                                     command: command.trimmingCharacters(in: .whitespacesAndNewlines),
-                                    readiness: readiness, symbolName: symbolName)
+                                    readiness: readiness, symbolName: symbolName,
+                                    envBadgeDisabled: envBadgeDisabled ? true : nil)
         do {
             switch mode {
             case .add:
