@@ -73,6 +73,11 @@ enum SidebarSelectionCoding {
 struct SidebarView: View {
     var model: AppModel
     @Binding var selection: SidebarSelection
+    /// Chiamato con l'esito di una scansione cartella (bottone "Scansiona cartella…") + la
+    /// root scelta. Lo stato della sheet `ScanResultsSheet` vive in `ContentView` (non qui) per
+    /// poter essere condiviso col flusso di drag&drop, che vive anch'esso in `ContentView` — la
+    /// sidebar si limita a produrre l'evento, non possiede la presentazione.
+    var onScanRequested: (ProjectScanner.ScanResult, URL) -> Void = { _, _ in }
     @Environment(\.openWindow) private var openWindow
 
     @State private var addingServiceToProject: String?
@@ -157,6 +162,12 @@ struct SidebarView: View {
                     showImportSheet = true
                 } label: {
                     Label("Importa progetto…", systemImage: "square.and.arrow.down")
+                }
+
+                Button {
+                    scanFolder()
+                } label: {
+                    Label("Scansiona cartella…", systemImage: "doc.text.magnifyingglass")
                 }
 
                 Button {
@@ -325,6 +336,21 @@ struct SidebarView: View {
             try? await Task.sleep(for: .seconds(2.5))
             showPromptCopiedConfirmation = false
         }
+    }
+
+    /// Bottone "Scansiona cartella…": NSOpenPanel diretto (stesso motivo delle altre sheet di
+    /// questo file — `.fileImporter` da sheet modale è inaffidabile su macOS), poi delega
+    /// l'esito a `onScanRequested` così la presentazione di `ScanResultsSheet` resta di
+    /// competenza di `ContentView`.
+    private func scanFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Scegli la cartella del progetto da scansionare"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let result = ProjectScanner.scan(root: url)
+        onScanRequested(result, url)
     }
 
     /// Fallback (nessuno store, usato solo dai test/preview con AppModel legacy): tutte le

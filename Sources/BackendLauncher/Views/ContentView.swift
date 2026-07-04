@@ -22,6 +22,19 @@ struct ContentView: View {
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
     @State private var showWelcomeSheet = false
     @State private var paletteState = PaletteState.shared
+    /// Esito di una scansione cartella (bottone sidebar "Scansiona cartella…" o drag&drop di
+    /// una directory) in attesa di conferma utente. Wrapped in un tipo `Identifiable` per
+    /// pilotare `.sheet(item:)`: vive qui (non in `SidebarView`) perché entrambi i trigger
+    /// (sidebar e drop sull'intera finestra) devono condividere la stessa presentazione.
+    @State private var pendingScan: PendingScan?
+    /// File `.json` sganciato sulla finestra: precarica `ImportTemplateSheet` con questo path
+    /// invece di aprirla vuota — riusa lo stesso sheet del bottone "Importa progetto…" della
+    /// sidebar (quel percorso resta invariato, con `preloadedFileURL` a `nil`).
+    @State private var droppedTemplateURL: URL?
+    @State private var showImportSheetFromDrop = false
+    /// `true` mentre un drag di file è sopra la finestra — pilota l'overlay "Rilascia per
+    /// aggiungere".
+    @State private var dropTargeted = false
 
     private var gridColumns: [GridItem] {
         contentWidth < 860
@@ -34,12 +47,38 @@ struct ContentView: View {
             SidebarView(model: model, selection: Binding(
                 get: { SidebarSelectionCoding.decode(selectionRaw) },
                 set: { selectionRaw = SidebarSelectionCoding.encode($0) }
-            ))
+            ), onScanRequested: { result, root in
+                pendingScan = PendingScan(result: result, root: root)
+            })
             .navigationSplitViewColumnWidth(min: 200, ideal: 230)
         } detail: {
             detailContent
         }
         .overlay(alignment: .bottom) { ToastOverlay() }
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .background {
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Color.accentColor.opacity(0.08))
+                    }
+                    .overlay {
+                        Label("Rilascia per aggiungere", systemImage: "square.and.arrow.down.on.square")
+                            .font(.title3.weight(.semibold))
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .glassEffect(.regular, in: .capsule)
+                    }
+                    .padding(12)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.snappy, value: dropTargeted)
+        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+            handleDrop(providers)
+        }
         .overlay {
             if paletteState.isPresented {
                 CommandPaletteView(
@@ -97,6 +136,18 @@ struct ContentView: View {
             ServiceFormSheet(model: model, projectID: target.id, mode: .add) {
                 addingServiceToProjectID = nil
             }
+        }
+        .sheet(item: $pendingScan) { pending in
+            ScanResultsSheet(model: model, scanResult: pending.result, root: pending.root, onDismiss: {
+                pendingScan = nil
+            }, onCreated: { projectID in
+                selectionRaw = SidebarSelectionCoding.encode(.project(projectID))
+            })
+        }
+        .sheet(isPresented: $showImportSheetFromDrop, onDismiss: { droppedTemplateURL = nil }) {
+            ImportTemplateSheet(model: model, onDismiss: {
+                showImportSheetFromDrop = false
+            }, preloadedFileURL: droppedTemplateURL)
         }
         .alert("Impossibile cambiare cartella", isPresented: Binding(
             get: { rebaseError != nil },
@@ -449,6 +500,39 @@ struct ContentView: View {
             }
         }
     }
+
+    // MARK: - Drag & drop (cartella progetto o template .json)
+
+    /// Gestisce un drop di file sulla finestra: carica il PRIMO item come `URL` (più item
+    /// trascinati insieme non sono un caso d'uso previsto — si ignora tutto tranne il primo,
+    /// stessa semantica "un solo target" delle altre picker dell'app). Una directory avvia la
+    /// scansione (`ProjectScanner`) e presenta `ScanResultsSheet`; un file che finisce per
+    /// ".json" precarica `ImportTemplateSheet`. Qualunque altro tipo di file viene ignorato
+    /// silenziosamente (nessun formato noto da importare).
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first, provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
+            return false
+        }
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+            guard let url else { return }
+            Task { @MainActor in
+                handleDroppedURL(url)
+            }
+        }
+        return true
+    }
+
+    private func handleDroppedURL(_ url: URL) {
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+        if exists, isDirectory.boolValue {
+            let result = ProjectScanner.scan(root: url)
+            pendingScan = PendingScan(result: result, root: url)
+        } else if url.pathExtension.lowercased() == "json" {
+            droppedTemplateURL = url
+            showImportSheetFromDrop = true
+        }
+    }
 }
 
 /// Wrapper `Identifiable` per pilotare `.sheet(item:)` con un `String?` opzionale (project id) —
@@ -456,6 +540,15 @@ struct ContentView: View {
 /// al file e questa sheet è di competenza esclusiva di `ContentView` (stato vuoto progetto).
 private struct EmptyProjectSheetTarget: Identifiable {
     let id: String
+}
+
+/// Esito di una scansione cartella in attesa di conferma (bottone sidebar o drag&drop di una
+/// directory), con un id stabile per `.sheet(item:)` — la root scelta dall'utente è univoca per
+/// singola richiesta di scan, quindi ne deriva l'identità.
+private struct PendingScan: Identifiable {
+    let result: ProjectScanner.ScanResult
+    let root: URL
+    var id: String { root.path }
 }
 
 private extension String {
