@@ -139,6 +139,7 @@ enum HelpContent {
                     "Esporta progetto…",
                     "Elimina progetto"
                 ]),
+                .paragraph("Sulla pagina di un progetto la toolbar sdoppia le azioni di massa: \"Avvia progetto\" / \"Ferma progetto\" (solo i backend di quel progetto — l'avvio è il bottone prominente) accanto ad \"Avvia tutti\" / \"Ferma tutti\" (globali). Le azioni di massa chiedono conferma; ogni popup è disattivabile dalle Impostazioni."),
                 .paragraph("Se le cartelle dei backend non esistono su questo Mac, un banner \"cartelle mancanti\" te lo segnala, con la possibilità di ripuntare la cartella o eliminare il progetto direttamente da lì."),
                 .paragraph("Per modificare un servizio, usa il tasto destro sul rigo: va prima fermato. Se modifichi un servizio mentre è in esecuzione, le modifiche restano \"in sospeso\" (icona arancione) e si applicano solo quando lo fermi."),
                 .subheading("File .env mancante"),
@@ -217,7 +218,8 @@ enum HelpContent {
                     "Righe massime per terminale (default 5000 — vale per i nuovi avvii).",
                     "Dimensione testo terminale (anche da ⌘= / ⌘−).",
                     "Aspetto: Sistema / Chiaro / Scuro.",
-                    "Notifiche di crash on/off."
+                    "Notifiche di crash on/off.",
+                    "Conferme di sicurezza: i popup di conferma di \"Avvia tutti\", \"Ferma tutti\" e \"Ferma progetto\" (toolbar) sono disattivabili singolarmente — disattivando, l'azione parte subito al click."
                 ])
             ]
         ),

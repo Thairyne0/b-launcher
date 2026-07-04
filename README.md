@@ -194,10 +194,16 @@ torna disponibile).
 - **Log su file**: ogni servizio scrive anche su
   `~/Library/Logs/BackendLauncher/<nome>.log`, con rotazione a 5MB (il file
   corrente viene rinominato in `.old` e se ne ricomincia uno nuovo).
-- **Conferma quit / ferma-tutti**: chiudere l'app o premere "Ferma tutti" con
-  backend attivi chiede conferma; lo stop è pulito su tutto il process group
-  (SIGTERM → attesa → SIGKILL), niente processi orfani. Chiudere la finestra non
-  termina l'app finché la menu bar extra resta attiva.
+- **Conferme di sicurezza**: "Avvia tutti", "Ferma tutti" e "Ferma progetto"
+  (toolbar) chiedono conferma prima di agire in massa; ogni popup è
+  disattivabile singolarmente dalle Impostazioni (⌘,), sezione "Conferme di
+  sicurezza". Anche chiudere l'app con backend attivi chiede conferma; lo stop è
+  pulito su tutto il process group (SIGTERM → attesa → SIGKILL), niente processi
+  orfani. Chiudere la finestra non termina l'app finché la menu bar extra resta
+  attiva.
+- **Avvio/stop per progetto dalla toolbar**: sulla pagina di un progetto il
+  bottone prominente è "Avvia progetto" (solo i suoi backend), affiancato da
+  "Avvia tutti"; stesso sdoppiamento per "Ferma progetto" / "Ferma tutti".
 - **Limitazione Docker**: il launcher ferma solo il comando lanciato (es.
   `docker compose up`), non i container Docker che quel comando avvia — prevedi
   uno stop manuale (`docker compose down`). Il form di un backend mostra un

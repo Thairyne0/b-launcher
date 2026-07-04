@@ -24,6 +24,9 @@ enum AppSettings {
         static let crashNotificationsEnabled = "crashNotificationsEnabled"
         static let terminalFontSize = "terminalFontSize"
         static let appearance = "appearance"
+        static let confirmStartAll = "confirmStartAll"
+        static let confirmStopAll = "confirmStopAll"
+        static let confirmStopProject = "confirmStopProject"
     }
 
     /// Intervallo (secondi) tra due cicli di poll di stato/porte in AppModel. Default 2.
@@ -52,6 +55,23 @@ enum AppSettings {
             return clampMaxLogLines(stored)
         }
         set { defaults.set(clampMaxLogLines(newValue), forKey: Keys.maxLogLines) }
+    }
+
+    /// Conferme di sicurezza dei bottoni di massa in toolbar: ciascuna disattivabile
+    /// singolarmente dalle Impostazioni. Default `true` (popup attivo).
+    static var confirmStartAll: Bool {
+        get { defaults.object(forKey: Keys.confirmStartAll) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.confirmStartAll) }
+    }
+
+    static var confirmStopAll: Bool {
+        get { defaults.object(forKey: Keys.confirmStopAll) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.confirmStopAll) }
+    }
+
+    static var confirmStopProject: Bool {
+        get { defaults.object(forKey: Keys.confirmStopProject) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.confirmStopProject) }
     }
 
     /// Se `false`, `CrashNotifier.notifyCrash` è un no-op. Default `true`.

@@ -7,6 +7,10 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("sidebarSelection") private var selectionRaw = "grid"
+    /// Conferma "Avvia tutti" dalla toolbar (solo se `AppSettings.confirmStartAll`).
+    @State private var startAllConfirmationShown = false
+    /// Id del progetto in attesa di conferma "Ferma progetto" (nil = nessun dialogo).
+    @State private var stopProjectConfirmationID: String?
     @State private var contentWidth: CGFloat = 1200
     /// Progetto per cui è stato richiesto un cambio di cartella radice dal banner "cartelle
     /// mancanti" — pilota il `.fileImporter` di rebase, stessa meccanica del menu contestuale
@@ -115,13 +119,32 @@ struct ContentView: View {
             Text(infraAlertMessage)
         }
         .confirmationDialog("Fermare tutti i backend?", isPresented: $model.stopAllRequested) {
-            Button("Ferma tutti", role: .destructive) {
-                model.stopAll()
-                ToastCenter.shared.show("Arresto di tutti i backend", systemImage: "stop.circle.fill")
-            }
+            Button("Ferma tutti", role: .destructive) { performStopAll() }
             Button("Annulla", role: .cancel) {}
         } message: {
             Text("Tutti i processi verranno terminati.")
+        }
+        .confirmationDialog("Avviare tutti i backend?", isPresented: $startAllConfirmationShown) {
+            Button("Avvia tutti") { performStartAll() }
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("Verranno avviati i backend non attivi di TUTTI i progetti.")
+        }
+        .confirmationDialog(
+            "Fermare tutti i backend di questo progetto?",
+            isPresented: Binding(
+                get: { stopProjectConfirmationID != nil },
+                set: { if !$0 { stopProjectConfirmationID = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Ferma progetto", role: .destructive) {
+                if let id = stopProjectConfirmationID { performStopProject(id) }
+                stopProjectConfirmationID = nil
+            }
+            Button("Annulla", role: .cancel) { stopProjectConfirmationID = nil }
+        } message: {
+            Text("I processi del progetto verranno terminati.")
         }
         // Deep-link da notifica di crash: naviga direttamente sul pannello dedicato del
         // servizio rivelato da AppModel.revealService (expandedServices è già stato
@@ -295,14 +318,22 @@ struct ContentView: View {
                 // la conferma resta solo per "Ferma tutti", che è l'azione globale.
                 if case .project(let id) = currentSelection {
                     Button("Ferma progetto", systemImage: "stop.fill") {
-                        model.stopProject(named: id)
-                        ToastCenter.shared.show("Arresto progetto \(navigationTitle(for: currentSelection))",
-                                                systemImage: "stop.circle.fill")
+                        if AppSettings.confirmStopProject {
+                            stopProjectConfirmationID = id
+                        } else {
+                            performStopProject(id)
+                        }
                     }
                     .disabled(!model.services.contains { $0.config.projectName == id && $0.processAlive })
                     .help("Ferma tutti i backend di questo progetto")
                 }
-                Button("Ferma tutti", systemImage: "stop.circle") { model.stopAllRequested = true }
+                Button("Ferma tutti", systemImage: "stop.circle") {
+                    if AppSettings.confirmStopAll {
+                        model.stopAllRequested = true
+                    } else {
+                        performStopAll()
+                    }
+                }
                     .disabled(!model.anyRunning)
                     .help("Ferma tutti i backend di tutti i progetti (⌘⇧S)")
                 // Sulla pagina di un progetto l'avvio è sdoppiato e l'azione PRIMARIA
@@ -339,9 +370,11 @@ struct ContentView: View {
     @ViewBuilder
     private func startAllButton(prominent: Bool) -> some View {
         let button = Button("Avvia tutti", systemImage: "play.circle") {
-            let startingCount = model.services.filter { !$0.processAlive }.count
-            model.startAll()
-            ToastCenter.shared.show("Avvio di \(startingCount) backend…", systemImage: "play.circle.fill")
+            if AppSettings.confirmStartAll {
+                startAllConfirmationShown = true
+            } else {
+                performStartAll()
+            }
         }
         .disabled(model.services.allSatisfy { $0.processAlive })
         .help("Avvia tutti i backend di tutti i progetti (⌘⇧A)")
@@ -351,6 +384,25 @@ struct ContentView: View {
         } else {
             button
         }
+    }
+
+    // MARK: - Azioni di massa (condivise tra bottoni diretti e dialoghi di conferma)
+
+    private func performStartAll() {
+        let startingCount = model.services.filter { !$0.processAlive }.count
+        model.startAll()
+        ToastCenter.shared.show("Avvio di \(startingCount) backend…", systemImage: "play.circle.fill")
+    }
+
+    private func performStopAll() {
+        model.stopAll()
+        ToastCenter.shared.show("Arresto di tutti i backend", systemImage: "stop.circle.fill")
+    }
+
+    private func performStopProject(_ id: String) {
+        model.stopProject(named: id)
+        let name = model.store?.projects.first(where: { $0.id == id })?.name ?? id
+        ToastCenter.shared.show("Arresto progetto \(name)", systemImage: "stop.circle.fill")
     }
 
     /// Titolo di navigazione per selezione: nome progetto per `.project`, invariato altrove.

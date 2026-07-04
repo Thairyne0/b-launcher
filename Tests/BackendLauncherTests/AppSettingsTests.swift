@@ -16,6 +16,22 @@ import Testing
         body()
     }
 
+    @Test func confirmationSettingsDefaultToTrueAndRoundTrip() {
+        withScratchDefaults {
+            // Default: tutte le conferme di sicurezza attive.
+            #expect(AppSettings.confirmStartAll == true)
+            #expect(AppSettings.confirmStopAll == true)
+            #expect(AppSettings.confirmStopProject == true)
+
+            AppSettings.confirmStartAll = false
+            AppSettings.confirmStopAll = false
+            AppSettings.confirmStopProject = false
+            #expect(AppSettings.confirmStartAll == false)
+            #expect(AppSettings.confirmStopAll == false)
+            #expect(AppSettings.confirmStopProject == false)
+        }
+    }
+
     @Test func pollIntervalDefaultsWhenUnset() {
         withScratchDefaults {
             #expect(AppSettings.pollIntervalSeconds == 2)

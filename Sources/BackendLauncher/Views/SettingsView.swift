@@ -11,6 +11,9 @@ struct SettingsView: View {
     @State private var crashNotificationsEnabled: Bool = AppSettings.crashNotificationsEnabled
     @State private var terminalFontSize: Double = AppSettings.terminalFontSize
     @State private var appearance: AppAppearance = AppSettings.appearance
+    @State private var confirmStartAll: Bool = AppSettings.confirmStartAll
+    @State private var confirmStopAll: Bool = AppSettings.confirmStopAll
+    @State private var confirmStopProject: Bool = AppSettings.confirmStopProject
 
     var body: some View {
         Form {
@@ -59,9 +62,18 @@ struct SettingsView: View {
             Section {
                 Toggle("Notifiche di crash", isOn: $crashNotificationsEnabled)
             }
+
+            Section("Conferme di sicurezza") {
+                Toggle("Chiedi conferma per \"Avvia tutti\"", isOn: $confirmStartAll)
+                Toggle("Chiedi conferma per \"Ferma tutti\"", isOn: $confirmStopAll)
+                Toggle("Chiedi conferma per \"Ferma progetto\"", isOn: $confirmStopProject)
+                Text("Valgono per i bottoni della toolbar. Disattivando, l'azione parte subito al click.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 340)
+        .frame(width: 420, height: 500)
         .onChange(of: pollIntervalSeconds) { _, newValue in
             AppSettings.pollIntervalSeconds = newValue
         }
@@ -80,6 +92,15 @@ struct SettingsView: View {
         .onChange(of: appearance) { _, newValue in
             AppSettings.appearance = newValue
             AppSettings.applyAppearance()
+        }
+        .onChange(of: confirmStartAll) { _, newValue in
+            AppSettings.confirmStartAll = newValue
+        }
+        .onChange(of: confirmStopAll) { _, newValue in
+            AppSettings.confirmStopAll = newValue
+        }
+        .onChange(of: confirmStopProject) { _, newValue in
+            AppSettings.confirmStopProject = newValue
         }
     }
 }
