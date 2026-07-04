@@ -90,4 +90,44 @@ import Testing
             )
         }
     }
+
+    @Test func nonUTF8ChunkIsLossyDecodedNotDropped() async throws {
+        // \xFF non è mai un byte UTF-8 valido da solo: con `String(data:encoding:.utf8)`
+        // (strict) l'intero chunk andrebbe perso. Il fix usa `String(decoding:as:)` (lossy),
+        // che sostituisce solo la sequenza non valida con U+FFFD ma mantiene il resto del
+        // testo — verifichiamo che il testo circostante arrivi comunque a onChunk.
+        let rec = Recorder()
+        _ = try SpawnedProcess(
+            shellCommand: #"printf 'before-\xFF-after\n'"#,
+            cwd: "/tmp",
+            callbackQueue: rec.queue,
+            onChunk: { rec.chunk($0) },
+            onExit: { rec.exited($0) }
+        )
+        let done = await waitUntil { rec.queue.sync { rec.exitCode != nil } }
+        #expect(done)
+        rec.queue.sync {
+            #expect(rec.output.contains("before-"))
+            #expect(rec.output.contains("-after"))
+        }
+    }
+
+    @Test func childReceivesPythonUnbufferedEnvVar() async throws {
+        // Il figlio deve vedere PYTHONUNBUFFERED=1 nell'ambiente, iniettato da SpawnedProcess
+        // oltre all'environ del genitore, così l'output di Python non resta bloccato nel
+        // block-buffering di libc quando stdout è una pipe.
+        let rec = Recorder()
+        _ = try SpawnedProcess(
+            shellCommand: "echo $PYTHONUNBUFFERED",
+            cwd: "/tmp",
+            callbackQueue: rec.queue,
+            onChunk: { rec.chunk($0) },
+            onExit: { rec.exited($0) }
+        )
+        let done = await waitUntil { rec.queue.sync { rec.exitCode != nil } }
+        #expect(done)
+        rec.queue.sync {
+            #expect(rec.output.contains("1"))
+        }
+    }
 }

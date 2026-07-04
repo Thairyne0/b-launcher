@@ -44,6 +44,13 @@ final class LogStore {
     // \u{1B}\[ ... lettera finale — copre colori e cursor codes CSI
     private static let ansiPattern = try! NSRegularExpression(pattern: "\u{1B}\\[[0-9;?]*[A-Za-z]")
 
+    // OSC (Operating System Command): \u{1B}] ... terminata da BEL (\u{07}) o da ST (\u{1B}\).
+    // Usata da molti tool (npm, shell, terminal multiplexer) per impostare il titolo della
+    // finestra — senza questo strip finisce nei log come testo illeggibile.
+    private static let oscPattern = try! NSRegularExpression(
+        pattern: "\u{1B}\\][^\u{07}\u{1B}]*(\u{07}|\u{1B}\\\\)"
+    )
+
     /// Marker di avvio emesso da ServiceController all'inizio di ogni esecuzione — contratto
     /// interno concordato per resettare il conteggio errori senza che ServiceController debba
     /// conoscere LogStore. Se il prefisso cambia lato ServiceController, aggiornare qui.
@@ -83,7 +90,13 @@ final class LogStore {
     }
 
     func ingest(_ chunk: String) {
-        var buffer = partial + Self.stripANSI(chunk)
+        // Normalizza CRLF → LF PRIMA dello split: Swift tratta "\r\n" come un SINGOLO
+        // Character (extended grapheme cluster), quindi `firstIndex(of: "\n")` non lo
+        // individua mai se preceduto da "\r" — senza questa normalizzazione lo split sotto
+        // non troverebbe MAI una newline in un chunk CRLF (tool Windows-origin, alcuni
+        // logger), l'intero output finirebbe bufferizzato in `partial` senza mai emettere
+        // una riga.
+        var buffer = partial + Self.stripANSI(chunk).replacingOccurrences(of: "\r\n", with: "\n")
         var incoming: [LogLine] = []
         while let nl = buffer.firstIndex(of: "\n") {
             let text = String(buffer[..<nl])
@@ -162,7 +175,11 @@ final class LogStore {
     }
 
     private static func stripANSI(_ s: String) -> String {
-        let range = NSRange(s.startIndex..., in: s)
-        return ansiPattern.stringByReplacingMatches(in: s, range: range, withTemplate: "")
+        let withoutOSC: String = {
+            let range = NSRange(s.startIndex..., in: s)
+            return oscPattern.stringByReplacingMatches(in: s, range: range, withTemplate: "")
+        }()
+        let range = NSRange(withoutOSC.startIndex..., in: withoutOSC)
+        return ansiPattern.stringByReplacingMatches(in: withoutOSC, range: range, withTemplate: "")
     }
 }

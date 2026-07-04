@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 @testable import BackendLauncher
 
@@ -47,6 +48,18 @@ import Testing
     @Test func stoppedAfterUserStopTakesPrecedenceOverStalePortOpen() {
         #expect(ServiceStatus.derive(processAlive: false, portOpen: true,
                                      stopRequested: true, lastExitCode: 0) == .stopped)
+    }
+
+    // MARK: - label/color (A4: exit 0 is a clean stop, not a crash, in the UI)
+
+    @Test func crashedWithNonZeroExitCodeLabelUnchanged() {
+        #expect(ServiceStatus.crashed(exitCode: 7).label == "crash (exit 7)")
+        #expect(ServiceStatus.crashed(exitCode: 7).color == .red)
+    }
+
+    @Test func crashedWithZeroExitCodeHasTerminatedLabelAndOrangeColor() {
+        #expect(ServiceStatus.crashed(exitCode: 0).label == "terminato (exit 0)")
+        #expect(ServiceStatus.crashed(exitCode: 0).color == .orange)
     }
 
     @Test func sixServicesConfigured() {

@@ -77,8 +77,12 @@ final class SpawnedProcess {
         cArgv.append(nil)
         defer { cArgv.forEach { free($0) } }
 
+        var cEnv: [UnsafeMutablePointer<CChar>?] = Self.childEnvironment().map { strdup($0) }
+        cEnv.append(nil)
+        defer { cEnv.forEach { free($0) } }
+
         var childPID: pid_t = 0
-        let rc = posix_spawn(&childPID, "/bin/zsh", &fileActions, &attrs, &cArgv, environ)
+        let rc = posix_spawn(&childPID, "/bin/zsh", &fileActions, &attrs, &cArgv, &cEnv)
         close(writeFD)  // lato scrittura resta solo nel figlio
         guard rc == 0 else {
             close(readFD)
@@ -93,9 +97,13 @@ final class SpawnedProcess {
                 handle.readabilityHandler = nil
                 return
             }
-            if let text = String(data: data, encoding: .utf8) {
-                callbackQueue.async { onChunk(text) }
-            }
+            // Decodifica "lossy": un chunk di pipe può spezzare una sequenza multibyte UTF-8
+            // esattamente al confine, o il processo figlio può scrivere byte non-UTF-8 (es.
+            // output binario accidentale). `String(data:encoding:.utf8)` (strict) scarterebbe
+            // l'INTERO chunk in questi casi — meglio sostituire solo la parte non valida con
+            // U+FFFD e mostrare comunque il resto del testo nei log.
+            let text = String(decoding: data, as: UTF8.self)
+            callbackQueue.async { onChunk(text) }
         }
 
         exitSource = DispatchSource.makeProcessSource(identifier: childPID, eventMask: .exit,
@@ -158,5 +166,29 @@ final class SpawnedProcess {
         let low = status & 0x7f
         if low == 0 { return (status >> 8) & 0xff }  // uscita normale
         return 128 + low                              // terminato da segnale
+    }
+
+    /// Snapshot dell'`environ` del genitore ("KEY=VALUE" per riga) più le variabili che
+    /// forziamo per il figlio, quando non già impostate esplicitamente dall'utente:
+    /// - `PYTHONUNBUFFERED=1`: quando stdout è una pipe (sempre il nostro caso) libc passa a
+    ///   block-buffering invece di line-buffering, quindi l'output di un processo Python resta
+    ///   invisibile nei log finché il buffer non si riempie. Questa var forza `sys.stdout`/
+    ///   `sys.stderr` non bufferizzati fin dall'avvio dell'interprete.
+    static func childEnvironment() -> [String] {
+        var seenKeys = Set<String>()
+        var result: [String] = []
+        var i = 0
+        while let entry = environ[i] {
+            let pair = String(cString: entry)
+            result.append(pair)
+            if let eq = pair.firstIndex(of: "=") {
+                seenKeys.insert(String(pair[pair.startIndex..<eq]))
+            }
+            i += 1
+        }
+        if !seenKeys.contains("PYTHONUNBUFFERED") {
+            result.append("PYTHONUNBUFFERED=1")
+        }
+        return result
     }
 }

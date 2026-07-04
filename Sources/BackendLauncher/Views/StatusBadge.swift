@@ -24,6 +24,9 @@ extension ServiceStatus {
         case .starting: return "avvio…"
         case .running: return "in esecuzione"
         case .stopping: return "arresto…"
+        // Exit 0 non richiesto dall'utente non è un vero crash (nessun errore, il processo si
+        // è solo fermato da solo) — label/colore più neutri di un vero crash, che resta rosso.
+        case .crashed(0): return "terminato (exit 0)"
         case .crashed(let code): return "crash (exit \(code))"
         case .external: return "attivo fuori dal launcher"
         }
@@ -35,6 +38,7 @@ extension ServiceStatus {
         case .starting: return .yellow
         case .running: return .green
         case .stopping: return .orange
+        case .crashed(0): return .orange
         case .crashed: return .red
         case .external: return .blue
         }

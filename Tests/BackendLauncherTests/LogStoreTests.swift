@@ -24,6 +24,26 @@ import Testing
         #expect(store.lines.map(\.text) == ["[Nest] ready"])
     }
 
+    @Test func stripsOSCTitleSequenceTerminatedByBEL() {
+        let store = LogStore()
+        // OSC 0 ; <title> BEL — usata da molti tool per impostare il titolo del terminale.
+        store.ingest("\u{1B}]0;my-title\u{07}hello\n")
+        #expect(store.lines.map(\.text) == ["hello"])
+    }
+
+    @Test func stripsOSCSequenceTerminatedByST() {
+        let store = LogStore()
+        // OSC terminata da ST (ESC \) invece che BEL.
+        store.ingest("\u{1B}]0;my-title\u{1B}\\hello\n")
+        #expect(store.lines.map(\.text) == ["hello"])
+    }
+
+    @Test func stripsTrailingCarriageReturnFromCRLFLines() {
+        let store = LogStore()
+        store.ingest("hello\r\nworld\r\n")
+        #expect(store.lines.map(\.text) == ["hello", "world"])
+    }
+
     @Test func capsAtMaxLines() {
         let store = LogStore(maxLines: 3)
         store.ingest("1\n2\n3\n4\n5\n")

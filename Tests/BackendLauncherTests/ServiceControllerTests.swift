@@ -158,6 +158,23 @@ private func fakeConfig(command: String) -> ServiceConfig {
         #expect(stopped)
     }
 
+    @Test func markerSplitAcrossChunksStillTurnsRunning() async {
+        // Il marker viene scritto in due write() separati (flush + sleep intermedio), così
+        // arriva a onChunk come due chunk distinti che spezzano la stringa del marker a metà.
+        // Senza una coda "rolling tail" tra i chunk, un match che attraversa il confine
+        // sfuggirebbe al controllo per-chunk.
+        let config = ServiceConfig(name: "fake", directory: "", command:
+                                   #"sh -c "printf 'SPLIT-MAR'; sleep 0.3; printf 'KER-XYZ\n'; sleep 60""#,
+                                   readiness: .logMarker("SPLIT-MARKER-XYZ"))
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.start()
+        let running = await waitUntil(timeout: 15) { c.status == .running }
+        #expect(running)
+        c.stop()
+        let stopped = await waitUntil { c.status == .stopped }
+        #expect(stopped)
+    }
+
     @Test func processAliveKindIsRunningImmediately() async {
         // readiness .processAlive: nessun segnale esterno necessario, "running" appena spawnato.
         let config = ServiceConfig(name: "fake", directory: "", command: "sleep 60",
@@ -203,5 +220,82 @@ private func fakeConfig(command: String) -> ServiceConfig {
         #expect(!invoked)
         c.stop()
         _ = await waitUntil { c.status == .stopped }
+    }
+
+    @Test func exit0DoesNotNotify() async {
+        var invoked = false
+        let c = ServiceController(config: fakeConfig(command: "exit 0"), cwd: "/tmp",
+                                  onCrash: { _, _ in invoked = true })
+        c.start()
+        let crashed = await waitUntil { c.status == .crashed(exitCode: 0) }
+        #expect(crashed)
+        #expect(!invoked)
+    }
+
+    // MARK: - wrappedShellCommand (A1 rc sourcing + A3 exec decision)
+
+    @Test func wrappedShellCommandSourcesZshrcBeforeSimpleCommand() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "npm run start:dev")
+        #expect(wrapped == "[ -f ~/.zshrc ] && source ~/.zshrc >/dev/null 2>&1; exec npm run start:dev")
+    }
+
+    @Test func wrappedShellCommandSourcesZshrcBeforeCompoundCommandWithoutExec() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "a && b")
+        #expect(wrapped == "[ -f ~/.zshrc ] && source ~/.zshrc >/dev/null 2>&1; a && b")
+    }
+
+    @Test func wrappedShellCommandUsesExecForSimpleCommand() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "npm run start:dev")
+        #expect(wrapped.contains("exec npm run start:dev"))
+    }
+
+    @Test func wrappedShellCommandOmitsExecForAndAnd() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "a && b")
+        #expect(!wrapped.contains("exec"))
+    }
+
+    @Test func wrappedShellCommandOmitsExecForOrOr() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "a || b")
+        #expect(!wrapped.contains("exec"))
+    }
+
+    @Test func wrappedShellCommandOmitsExecForSemicolon() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "a; b")
+        #expect(!wrapped.contains("exec"))
+    }
+
+    @Test func wrappedShellCommandOmitsExecForPipe() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "a | b")
+        #expect(!wrapped.contains("exec"))
+    }
+
+    @Test func wrappedShellCommandOmitsExecForRedirect() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "a > log")
+        #expect(!wrapped.contains("exec"))
+    }
+
+    @Test func wrappedShellCommandOmitsExecForInputRedirect() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "a < input")
+        #expect(!wrapped.contains("exec"))
+    }
+
+    @Test func wrappedShellCommandOmitsExecForBackground() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "a &")
+        #expect(!wrapped.contains("exec"))
+    }
+
+    @Test func wrappedShellCommandOmitsExecForNewline() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "a\nb")
+        #expect(!wrapped.contains("exec"))
+    }
+
+    @Test func wrappedShellCommandOmitsExecForLeadingEnvAssignment() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "PORT=3000 npm start")
+        #expect(!wrapped.contains("exec"))
+    }
+
+    @Test func wrappedShellCommandUsesExecForOrdinaryNpmCommand() {
+        let wrapped = ServiceController.wrappedShellCommand(for: "npm run start:dev")
+        #expect(wrapped.hasSuffix("exec npm run start:dev"))
     }
 }

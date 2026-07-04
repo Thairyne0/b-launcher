@@ -9,9 +9,9 @@ backend si definiscono dalla UI e vivono su disco.
 
 - macOS 26 (Tahoe)
 - Xcode 26 per compilare
-- I comandi dei backend girano tramite `zsh` come login shell (`zsh -l`), così
-  risolvono lo stesso `PATH` di un terminale interattivo (es. `npm` installato via
-  Homebrew)
+- I comandi dei backend girano tramite `zsh` come login shell (`zsh -l`) con
+  sourcing di `~/.zshrc` se presente: PATH come nel tuo terminale (Homebrew,
+  nvm, pyenv…)
 
 ## Installazione (per il team)
 

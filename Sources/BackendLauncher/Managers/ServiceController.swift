@@ -33,6 +33,13 @@ final class ServiceController: Identifiable {
     private let onCrash: ((String, Int32) -> Void)?
     private let fileWriter: LogFileWriter
 
+    /// Coda "a scorrimento" degli ultimi caratteri ricevuti, usata solo per readiness
+    /// `.logMarker`: un marker può arrivare spezzato a metà tra due chunk della pipe (es.
+    /// "SPLIT-MAR" in un `read()` e "KER-XYZ\n" nel successivo). Concatenando la coda al
+    /// chunk corrente prima del controllo, un match che attraversa il confine viene comunque
+    /// visto. Limitata a `marker.count * 2` per non crescere senza limite.
+    private var markerTail = ""
+
     /// Directory di default per i log di test: mai la vera ~/Library/Logs, per non
     /// inquinarla con gli innumerevoli ServiceController "fake" creati dalla test suite.
     private static let testLogDirectory = FileManager.default.temporaryDirectory
@@ -93,6 +100,44 @@ final class ServiceController: Identifiable {
                                     stopRequested: stopRequested, lastExitCode: lastExitCode)
     }
 
+    /// Operatori di shell che rendono un comando "composto": in presenza di uno qualsiasi,
+    /// `exec` va OMESSO, perché sostituirebbe l'intera shell con il PRIMO comando e i
+    /// successivi (dopo `&&`, `;`, `|`, ...) non verrebbero mai eseguiti. La shell wrapper
+    /// resta viva in questi casi, ma il kill del process group la ripulisce comunque insieme
+    /// a tutti i suoi figli — nessun orfano.
+    private static let shellControlOperators = [";", "&&", "||", "|", ">", "<", "\n", "&"]
+
+    /// Token di assegnazione d'ambiente in testa al comando (es. `PORT=3000 npm start`):
+    /// `exec PORT=3000 npm start` non è valido (exec non fa parsing delle assegnazioni come
+    /// farebbe la shell), quindi anche in questo caso `exec` va omesso.
+    private static let leadingEnvAssignmentPattern = try! NSRegularExpression(
+        pattern: #"^\s*[A-Za-z_][A-Za-z0-9_]*="#
+    )
+
+    /// Costruisce il comando effettivo passato a `zsh -l -c`:
+    /// 1. Sorgente `~/.zshrc` se presente (silenziosamente: alcuni zshrc stampano in output),
+    ///    così una shell di login NON interattiva risolve comunque nvm/pyenv/conda come fa il
+    ///    terminale dell'utente (zprofile da solo non basta per questi tool, che si agganciano
+    ///    tipicamente a .zshrc).
+    /// 2. `exec <command>` quando il comando è "semplice" (nessun operatore di shell, nessuna
+    ///    assegnazione d'ambiente in testa) — sostituisce la shell wrapper col processo reale,
+    ///    utile per una process tree più pulita. Comandi composti restano senza `exec`.
+    static func wrappedShellCommand(for command: String) -> String {
+        let sourceRC = "[ -f ~/.zshrc ] && source ~/.zshrc >/dev/null 2>&1"
+        let canExec = !containsShellControlOperator(command) && !hasLeadingEnvAssignment(command)
+        let actual = canExec ? "exec \(command)" : command
+        return "\(sourceRC); \(actual)"
+    }
+
+    private static func containsShellControlOperator(_ command: String) -> Bool {
+        shellControlOperators.contains { command.contains($0) }
+    }
+
+    private static func hasLeadingEnvAssignment(_ command: String) -> Bool {
+        let range = NSRange(command.startIndex..., in: command)
+        return leadingEnvAssignmentPattern.firstMatch(in: command, range: range) != nil
+    }
+
     func start() {
         guard !processAlive else { return }
         guard status != .external else {
@@ -102,6 +147,7 @@ final class ServiceController: Identifiable {
         stopRequested = false
         lastExitCode = nil
         readyMarkerSeen = false
+        markerTail = ""
         logs.ingest("[launcher] ── avvio \(config.displayName) (\(config.command)) ──\n")
         fileWriter.appendBanner("avvio \(config.displayName) — \(Date().formatted())")
         epoch += 1
@@ -109,13 +155,16 @@ final class ServiceController: Identifiable {
         do {
             let cwd = cwdOverride ?? config.workingDirectory.path
             process = try SpawnedProcess(
-                shellCommand: "exec \(config.command)",
+                shellCommand: Self.wrappedShellCommand(for: config.command),
                 cwd: cwd,
                 onChunk: { [weak self] chunk in
                     guard let self, self.epoch == myEpoch else { return }
-                    if case .logMarker(let marker) = self.config.readiness,
-                       !self.readyMarkerSeen, chunk.localizedCaseInsensitiveContains(marker) {
-                        self.readyMarkerSeen = true
+                    if case .logMarker(let marker) = self.config.readiness, !self.readyMarkerSeen {
+                        let haystack = self.markerTail + chunk
+                        if haystack.localizedCaseInsensitiveContains(marker) {
+                            self.readyMarkerSeen = true
+                        }
+                        self.markerTail = String(haystack.suffix(marker.count * 2))
                     }
                     self.logs.ingest(chunk)
                     self.fileWriter.append(chunk)
@@ -175,12 +224,17 @@ final class ServiceController: Identifiable {
     }
 
     private func handleExit(_ code: Int32) {
-        let isCrash = !stopRequested && !pendingRestart
+        // Un exit 0 non richiesto dall'utente resta comunque uno stato .crashed (vedi
+        // ServiceStatus.derive — l'app non lo tratta come .stopped perché il processo NON
+        // doveva terminare da solo), ma non è un vero "crash": niente notifica onCrash in
+        // questo caso, solo per exit code diverso da zero.
+        let isCrash = !stopRequested && !pendingRestart && code != 0
         processAlive = false
         process = nil
         startedAt = nil
         lastExitCode = code
         readyMarkerSeen = false
+        markerTail = ""
         statsTask?.cancel()
         statsTask = nil
         stats = nil
