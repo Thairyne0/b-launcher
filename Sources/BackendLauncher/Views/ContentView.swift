@@ -305,10 +305,12 @@ struct ContentView: View {
                 Button("Ferma tutti", systemImage: "stop.circle") { model.stopAllRequested = true }
                     .disabled(!model.anyRunning)
                     .help("Ferma tutti i backend di tutti i progetti (⌘⇧S)")
-                // Sulla pagina di un progetto, l'avvio è sdoppiato: "Avvia progetto"
-                // (solo i suoi backend) accanto ad "Avvia tutti" (globale, sempre presente
-                // e prominente). Stessa visibilità condizionale di "Pulisci terminali".
+                // Sulla pagina di un progetto l'avvio è sdoppiato e l'azione PRIMARIA
+                // (bottone prominente, all'estrema destra) è "Avvia progetto": è il
+                // contesto in cui si trova l'utente. "Avvia tutti" resta disponibile
+                // come azione secondaria; su Griglia/Focus è l'unico e resta prominente.
                 if case .project(let id) = currentSelection {
+                    startAllButton(prominent: false)
                     Button("Avvia progetto", systemImage: "play.fill") {
                         model.startProject(named: id)
                         ToastCenter.shared.show("Avvio progetto \(navigationTitle(for: currentSelection))",
@@ -317,15 +319,10 @@ struct ContentView: View {
                     .disabled(model.services.filter { $0.config.projectName == id }
                         .allSatisfy { $0.processAlive })
                     .help("Avvia tutti i backend di questo progetto")
-                }
-                Button("Avvia tutti", systemImage: "play.circle") {
-                    let startingCount = model.services.filter { !$0.processAlive }.count
-                    model.startAll()
-                    ToastCenter.shared.show("Avvio di \(startingCount) backend…", systemImage: "play.circle.fill")
-                }
-                    .disabled(model.services.allSatisfy { $0.processAlive })
-                    .help("Avvia tutti i backend di tutti i progetti (⌘⇧A)")
                     .buttonStyle(.glassProminent)
+                } else {
+                    startAllButton(prominent: true)
+                }
                 if case .project(let id) = currentSelection {
                     Button("Pulisci terminali", systemImage: "clear") {
                         model.clearProjectTerminals(named: id)
@@ -334,6 +331,25 @@ struct ContentView: View {
                     .help("Pulisci tutti i terminali del progetto")
                 }
             }
+        }
+    }
+
+    /// Bottone "Avvia tutti" (globale): prominente solo dove è l'azione primaria
+    /// (Griglia/Focus); sulla pagina progetto la prominenza passa ad "Avvia progetto".
+    @ViewBuilder
+    private func startAllButton(prominent: Bool) -> some View {
+        let button = Button("Avvia tutti", systemImage: "play.circle") {
+            let startingCount = model.services.filter { !$0.processAlive }.count
+            model.startAll()
+            ToastCenter.shared.show("Avvio di \(startingCount) backend…", systemImage: "play.circle.fill")
+        }
+        .disabled(model.services.allSatisfy { $0.processAlive })
+        .help("Avvia tutti i backend di tutti i progetti (⌘⇧A)")
+
+        if prominent {
+            button.buttonStyle(.glassProminent)
+        } else {
+            button
         }
     }
 
