@@ -67,6 +67,7 @@ struct ServiceFormSheet: View {
     @State private var healthPath: String = "/health"
     @State private var symbolName: String?
     @State private var envBadgeDisabled = false
+    @State private var envFileURL: URL?
     @State private var saveError: String?
     /// Evita di mostrare "il nome non può essere vuoto" prima ancora che l'utente abbia
     /// interagito col form (fastidioso in modalità "add" a sheet appena aperta).
@@ -250,6 +251,26 @@ struct ServiceFormSheet: View {
                    isOn: $envBadgeDisabled)
                 .font(.callout)
 
+            VStack(alignment: .leading, spacing: 6) {
+                Text("File env alternativo (opzionale)").font(.headline)
+                HStack {
+                    Text(envFileURL?.path ?? "Nessuno — usa il .env della cartella")
+                        .font(.callout)
+                        .foregroundStyle(envFileURL == nil ? Color.secondary : Color.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                    Spacer()
+                    if envFileURL != nil {
+                        Button("Rimuovi") { envFileURL = nil }
+                    }
+                    Button("Scegli…") { chooseEnvFile() }
+                }
+                Text("Le variabili del file vengono iniettate nell'ambiente del processo all'avvio (vincono su quelle del .env). Il .env su disco non viene toccato.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if let saveError {
                 Text(saveError)
                     .font(.callout)
@@ -336,6 +357,20 @@ struct ServiceFormSheet: View {
         }
         symbolName = service.symbolName
         envBadgeDisabled = service.envBadgeDisabled ?? false
+        envFileURL = service.envFile.map(URL.init(fileURLWithPath:))
+    }
+
+    /// Picker per il file env alternativo (file nascosti visibili: .env.* iniziano col punto).
+    private func chooseEnvFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.showsHiddenFiles = true
+        panel.message = "Scegli il file env da iniettare all'avvio"
+        if panel.runModal() == .OK, let url = panel.url {
+            envFileURL = url
+        }
     }
 
     private func save() {
@@ -359,7 +394,8 @@ struct ServiceFormSheet: View {
         let service = StoredService(name: trimmedName, directory: folderURL.path,
                                     command: command.trimmingCharacters(in: .whitespacesAndNewlines),
                                     readiness: readiness, symbolName: symbolName,
-                                    envBadgeDisabled: envBadgeDisabled ? true : nil)
+                                    envBadgeDisabled: envBadgeDisabled ? true : nil,
+                                    envFile: envFileURL?.path)
         do {
             switch mode {
             case .add:

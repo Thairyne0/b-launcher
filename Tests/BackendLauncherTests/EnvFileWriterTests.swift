@@ -162,6 +162,32 @@ import Testing
         #expect(EnvFileWriter.gitIgnoreStatus(for: dir, environment: sterileGitEnv) == .noRepo)
     }
 
+    // MARK: - parseEnv
+
+    @Test func parseEnvExtractsPairsQuotesAndComments() {
+        let content = """
+        # commento
+        PORT=4000
+        NAME="con spazi"  # commento inline
+        SINGLE='citata'
+        export TOKEN=abc=def
+        VUOTA=
+        non-valida
+        """
+        let parsed = EnvFileWriter.parseEnv(content)
+        #expect(parsed["PORT"] == "4000")
+        #expect(parsed["NAME"] == "con spazi")
+        #expect(parsed["SINGLE"] == "citata")
+        #expect(parsed["TOKEN"] == "abc=def")
+        #expect(parsed["VUOTA"] == "")
+        #expect(parsed.count == 5)
+    }
+
+    @Test func parseEnvEmptyContent() {
+        #expect(EnvFileWriter.parseEnv("").isEmpty)
+        #expect(EnvFileWriter.parseEnv("# solo commenti\n").isEmpty)
+    }
+
     // MARK: - envKeyCount
 
     @Test func envKeyCountCountsOnlyValidAssignments() {

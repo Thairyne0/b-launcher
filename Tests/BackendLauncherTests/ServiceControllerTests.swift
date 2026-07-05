@@ -120,6 +120,27 @@ private func fakeConfig(command: String) -> ServiceConfig {
         _ = await waitUntil { c.status == .stopped }
     }
 
+    @Test func envFileVariablesInjectedIntoProcessEnvironment() async throws {
+        // File env alternativo: le variabili devono arrivare nell'ambiente del processo
+        // (echo le rilegge), SENZA che il launcher scriva nulla nella working directory.
+        let envURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("blauncher-envfile-\(UUID().uuidString).env")
+        try "FOO_BLAUNCHER=iniettata\n".write(to: envURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: envURL) }
+
+        var config = ServiceConfig(name: "fake", directory: "", port: nil,
+                                   command: "echo VALORE=$FOO_BLAUNCHER && sleep 1")
+        config.envFile = envURL.path
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.start()
+        let seen = await waitUntil {
+            c.logs.lines.contains { $0.text.contains("VALORE=iniettata") }
+        }
+        #expect(seen)
+        c.stop()
+        _ = await waitUntil { !c.processAlive }
+    }
+
     @Test func crashInvokesOnCrashCallback() async {
         var captured: (String, Int32)?
         let c = ServiceController(config: fakeConfig(command: "exit 9"), cwd: "/tmp",

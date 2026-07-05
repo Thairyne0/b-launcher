@@ -70,6 +70,25 @@ import Testing
         #expect(configs.first?.envBadgeDisabled == false)
     }
 
+    @Test func envFilePersistsAndBridgesToConfig() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
+        var project = try #require(store.projects.first)
+        project.services.append(StoredService(
+            name: "con-env", directory: "/tmp/x", command: "true",
+            readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+            envFile: "/tmp/profili/.env.staging"))
+        store.replaceProject(project)
+        store.save()
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.services.last?.envFile == "/tmp/profili/.env.staging")
+        let config = try #require(reloaded.serviceConfigs(for: reloaded.projects[0]).last)
+        #expect(config.envFile == "/tmp/profili/.env.staging")
+        // Vecchi file senza il campo: nil.
+        #expect(reloaded.serviceConfigs(for: reloaded.projects[0]).first?.envFile == nil)
+    }
+
     @Test func httpHealthBridgesToConfigAndBumpsStoreVersionTo2() throws {
         let url = tempStoreURL()
         let store = ServiceStore.seededWithSkillera(fileURL: url)

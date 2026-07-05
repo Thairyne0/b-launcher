@@ -44,6 +44,8 @@ struct ServiceConfig: Identifiable, Hashable {
     /// `true` = il backend dichiara di non usare `.env`: la UI non mostra badge/icona
     /// ".env mancante". Default `false` per tutti gli init esistenti.
     var envBadgeDisabled: Bool = false
+    /// File env alternativo da iniettare nell'ambiente allo spawn (vedi StoredService).
+    var envFile: String? = nil
 
     /// Namespaced su `projectName` quando presente ("Progetto/nome"), altrimenti il nome
     /// nudo — questo mantiene `id == name` per ogni config costruita senza `projectName`

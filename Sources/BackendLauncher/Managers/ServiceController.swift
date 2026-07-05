@@ -173,11 +173,23 @@ final class ServiceController: Identifiable {
         fileWriter.appendBanner("avvio \(config.displayName) — \(Date().formatted())")
         epoch += 1
         let myEpoch = epoch
+        // File env alternativo: letto ORA (a ogni avvio, così le modifiche si applicano
+        // al prossimo start) e iniettato nell'ambiente del figlio. Mai valori nei log.
+        var extraEnvironment: [String: String] = [:]
+        if let envFilePath = config.envFile {
+            if let content = try? String(contentsOf: URL(fileURLWithPath: envFilePath), encoding: .utf8) {
+                extraEnvironment = EnvFileWriter.parseEnv(content)
+                logs.ingest("[launcher] env alternativo da \(envFilePath) (\(extraEnvironment.count) variabili)\n")
+            } else {
+                logs.ingest("[launcher] ATTENZIONE: file env \(envFilePath) non leggibile — ignorato\n")
+            }
+        }
         do {
             let cwd = cwdOverride ?? config.workingDirectory.path
             process = try SpawnedProcess(
                 shellCommand: Self.wrappedShellCommand(for: config.command),
                 cwd: cwd,
+                extraEnvironment: extraEnvironment,
                 onChunk: { [weak self] chunk in
                     guard let self, self.epoch == myEpoch else { return }
                     if case .logMarker(let marker) = self.config.readiness, !self.readyMarkerSeen {

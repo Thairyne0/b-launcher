@@ -34,6 +34,11 @@ struct StoredService: Codable, Hashable {
     /// nascosto. Optional e non Bool secco per l'additività dello schema (v1): assente nei
     /// file vecchi → `nil` → trattato come `false` dal bridge.
     var envBadgeDisabled: Bool? = nil
+    /// Path assoluto di un file env ALTERNATIVO (es. `.env.staging`): letto allo spawn e
+    /// iniettato nell'ambiente del processo — il `.env` su disco resta intatto (vincolo
+    /// non-invasivo). Additivo: assente nei file vecchi → `nil`. NON esportato nei
+    /// template (path assoluto personale).
+    var envFile: String? = nil
 }
 
 struct StoredInfraCheck: Codable, Hashable {
@@ -588,6 +593,7 @@ final class ServiceStore {
                 symbolName: service.symbolName
             )
             config.envBadgeDisabled = service.envBadgeDisabled ?? false
+            config.envFile = service.envFile
             return config
         }
     }

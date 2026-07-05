@@ -43,6 +43,7 @@ final class SpawnedProcess {
     }
 
     init(shellCommand: String, cwd: String,
+         extraEnvironment: [String: String] = [:],
          callbackQueue: DispatchQueue = .main,
          onChunk: @escaping (String) -> Void,
          onExit: @escaping (Int32) -> Void) throws {
@@ -77,7 +78,7 @@ final class SpawnedProcess {
         cArgv.append(nil)
         defer { cArgv.forEach { free($0) } }
 
-        var cEnv: [UnsafeMutablePointer<CChar>?] = Self.childEnvironment().map { strdup($0) }
+        var cEnv: [UnsafeMutablePointer<CChar>?] = Self.childEnvironment(extra: extraEnvironment).map { strdup($0) }
         cEnv.append(nil)
         defer { cEnv.forEach { free($0) } }
 
@@ -174,17 +175,25 @@ final class SpawnedProcess {
     ///   block-buffering invece di line-buffering, quindi l'output di un processo Python resta
     ///   invisibile nei log finché il buffer non si riempie. Questa var forza `sys.stdout`/
     ///   `sys.stderr` non bufferizzati fin dall'avvio dell'interprete.
-    static func childEnvironment() -> [String] {
+    /// `extra`: variabili del file env alternativo del servizio — VINCONO sulle chiavi
+    /// omonime dell'ambiente del launcher (è la scelta esplicita dell'utente).
+    static func childEnvironment(extra: [String: String] = [:]) -> [String] {
         var seenKeys = Set<String>()
         var result: [String] = []
         var i = 0
         while let entry = environ[i] {
             let pair = String(cString: entry)
-            result.append(pair)
-            if let eq = pair.firstIndex(of: "=") {
-                seenKeys.insert(String(pair[pair.startIndex..<eq]))
-            }
             i += 1
+            if let eq = pair.firstIndex(of: "=") {
+                let key = String(pair[pair.startIndex..<eq])
+                seenKeys.insert(key)
+                if extra[key] != nil { continue }  // sovrascritta: appesa sotto
+            }
+            result.append(pair)
+        }
+        for (key, value) in extra {
+            result.append("\(key)=\(value)")
+            seenKeys.insert(key)
         }
         if !seenKeys.contains("PYTHONUNBUFFERED") {
             result.append("PYTHONUNBUFFERED=1")

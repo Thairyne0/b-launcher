@@ -114,6 +114,49 @@ enum EnvFileWriter {
         }
     }
 
+    /// Parser dotenv minimale per il "file env alternativo" di un servizio: KEY=VALUE,
+    /// commenti (interi e inline), `export` opzionale, valori tra virgolette singole o
+    /// doppie. Stessa semantica di `ProjectScanner.normalizeEnvValue`. Sola lettura:
+    /// le variabili vengono iniettate nell'ambiente del processo, mai scritte su disco.
+    static func parseEnv(_ content: String) -> [String: String] {
+        var values: [String: String] = [:]
+        for rawLine in content.split(whereSeparator: \.isNewline) {
+            var line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            if line.hasPrefix("export ") {
+                line = String(line.dropFirst("export ".count))
+                    .trimmingCharacters(in: .whitespaces)
+            }
+            guard let equalsIndex = line.firstIndex(of: "="),
+                  equalsIndex != line.startIndex else { continue }
+            let key = String(line[line.startIndex..<equalsIndex])
+                .trimmingCharacters(in: .whitespaces)
+            guard let first = key.first,
+                  (first.isASCII && first.isLetter) || first == "_",
+                  key.allSatisfy({ ($0.isASCII && ($0.isLetter || $0.isNumber)) || $0 == "_" }) else { continue }
+            let rawValue = String(line[line.index(after: equalsIndex)...])
+                .trimmingCharacters(in: .whitespaces)
+            values[key] = normalizeValue(rawValue)
+        }
+        return values
+    }
+
+    /// Valore tra virgolette → contenuto fino alla chiusura (scarta commenti dopo);
+    /// non citato → troncato al primo commento inline (" #").
+    private static func normalizeValue(_ rawValue: String) -> String {
+        if let quote = rawValue.first, quote == "\"" || quote == "'" {
+            let afterQuote = rawValue.index(after: rawValue.startIndex)
+            if let closing = rawValue[afterQuote...].firstIndex(of: quote) {
+                return String(rawValue[afterQuote..<closing])
+            }
+        }
+        if let commentRange = rawValue.range(of: " #") {
+            return String(rawValue[rawValue.startIndex..<commentRange.lowerBound])
+                .trimmingCharacters(in: .whitespaces)
+        }
+        return rawValue
+    }
+
     /// Conta le righe che sembrano assegnazioni dotenv valide (`KEY=...`, `export KEY=...`),
     /// ignorando vuote e commenti. Solo feedback UI ("N variabili rilevate"): il contenuto
     /// viene comunque scritto com'è, mai interpretato.
