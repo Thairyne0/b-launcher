@@ -55,6 +55,9 @@ final class AppModel {
     private(set) var templateSyncAvailable: Set<String> = []
 
     private var pollTask: Task<Void, Never>?
+    /// Avvii orchestrati (ondate `startAfter`) in corso, per chiave di contesto (nome
+    /// progetto, "tutti", "profilo:X"): uno stop dello stesso contesto li cancella.
+    private var orchestrations: [String: Task<Void, Never>] = [:]
     private let crashNotificationsEnabled: Bool
     /// Contatore di cicli di poll: il controllo di sync dei template è più costoso (lettura file)
     /// di un semplice check porta, quindi gira ogni ~10 tick invece che a ogni tick — con
@@ -267,13 +270,78 @@ final class AppModel {
             warningInfraCheck = down
             showNATSWarning = true
         }
-        for service in services where !service.processAlive {
-            service.start()
+        // Ogni progetto è orchestrato per conto suo (le dipendenze non attraversano i progetti).
+        for group in servicesByProject {
+            startRespectingDependencies(group.services.filter { !$0.processAlive },
+                                        orchestrationKey: group.projectName)
         }
     }
 
     func stopAll() {
+        for task in orchestrations.values { task.cancel() }
+        orchestrations.removeAll()
         for service in services { service.stop() }
+    }
+
+    // MARK: - Avvio orchestrato (startAfter)
+
+    /// Avvia `controllers` rispettando `startAfter`: ondate topologiche, ogni ondata parte
+    /// quando la precedente è pronta (status running) o dopo `waveTimeout` a ondata —
+    /// scaduto il timeout si procede comunque (meglio un avvio "anticipato" di un deadlock).
+    /// Nessuna dipendenza nel set → percorso storico (start piatto immediato).
+    /// Dipendenze verso servizi FUORI dal set: soddisfatte se il servizio è già running,
+    /// altrimenti ignorate (non possiamo attendere chi non stiamo avviando).
+    private func startRespectingDependencies(_ controllers: [ServiceController],
+                                             orchestrationKey: String,
+                                             waveTimeout: TimeInterval = 90) {
+        guard controllers.contains(where: { !$0.config.startAfter.isEmpty }) else {
+            controllers.forEach { $0.start() }
+            return
+        }
+        let setNames = Set(controllers.map(\.config.name))
+        let projectName = controllers.first?.config.projectName ?? ""
+        let alreadyRunning = Set(services
+            .filter { $0.config.projectName == projectName && $0.status == .running }
+            .map(\.config.name))
+        let entries = controllers.map { controller in
+            (name: controller.config.name,
+             startAfter: controller.config.startAfter.filter {
+                 setNames.contains($0) && !alreadyRunning.contains($0)
+             })
+        }
+        guard let waves = StartOrchestrator.waves(services: entries) else {
+            for controller in controllers {
+                controller.logs.ingest("[launcher] dipendenze circolari nel progetto — avvio senza ordine\n")
+                controller.start()
+            }
+            return
+        }
+        let byName = Dictionary(uniqueKeysWithValues: controllers.map { ($0.config.name, $0) })
+        orchestrations[orchestrationKey]?.cancel()
+        orchestrations[orchestrationKey] = Task { [weak self] in
+            for (index, wave) in waves.enumerated() {
+                guard !Task.isCancelled else { return }
+                let waveControllers = wave.compactMap { byName[$0] }
+                for controller in waveControllers where !controller.processAlive {
+                    if index > 0 {
+                        controller.logs.ingest("[launcher] avvio in ondata \(index + 1) (dopo: \(controller.config.startAfter.joined(separator: ", ")))\n")
+                    }
+                    controller.start()
+                }
+                guard index < waves.count - 1 else { break }  // ultima ondata: niente attesa
+                let deadline = Date().addingTimeInterval(waveTimeout)
+                while Date() < deadline, !Task.isCancelled {
+                    // In attesa solo dei vivi non ancora pronti: un servizio morto nel
+                    // frattempo (crash) non deve bloccare le ondate successive.
+                    let pending = waveControllers.contains {
+                        $0.processAlive && $0.status != .running
+                    }
+                    if !pending { break }
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                }
+            }
+            _ = self
+        }
     }
 
     /// Avvia un profilo facendo match sul nome breve tra TUTTI i servizi (comportamento
@@ -284,10 +352,10 @@ final class AppModel {
             warningInfraCheck = down
             showNATSWarning = true
         }
-        for service in services
-        where profile.serviceNames.contains(service.config.name) && !service.processAlive {
-            service.start()
+        let targets = services.filter {
+            profile.serviceNames.contains($0.config.name) && !$0.processAlive
         }
+        startRespectingDependencies(targets, orchestrationKey: "profilo:\(profile.name)")
     }
 
     /// Avvia un profilo appartenente a un progetto specifico: il match è sul nome breve
@@ -295,12 +363,12 @@ final class AppModel {
     /// progetti con servizi omonimi non si confondono.
     func start(profile: LaunchProfile, inProject projectName: String) {
         warnIfInfraDown(forProject: projectName)
-        for service in services
-        where service.config.projectName == projectName
-            && profile.serviceNames.contains(service.config.name)
-            && !service.processAlive {
-            service.start()
+        let targets = services.filter {
+            $0.config.projectName == projectName
+                && profile.serviceNames.contains($0.config.name)
+                && !$0.processAlive
         }
+        startRespectingDependencies(targets, orchestrationKey: "profilo:\(projectName)/\(profile.name)")
     }
 
     /// Avvia tutti i servizi non ancora vivi di UN progetto specifico (match su
@@ -308,14 +376,16 @@ final class AppModel {
     /// `startAll()`: avvisa (se l'infra check non è su) ma procede comunque.
     func startProject(named projectName: String) {
         warnIfInfraDown(forProject: projectName)
-        for service in services
-        where service.config.projectName == projectName && !service.processAlive {
-            service.start()
+        let targets = services.filter {
+            $0.config.projectName == projectName && !$0.processAlive
         }
+        startRespectingDependencies(targets, orchestrationKey: projectName)
     }
 
     /// Ferma tutti i servizi vivi di UN progetto specifico (match su `config.projectName`).
     func stopProject(named projectName: String) {
+        orchestrations[projectName]?.cancel()
+        orchestrations[projectName] = nil
         for service in services where service.config.projectName == projectName {
             service.stop()
         }

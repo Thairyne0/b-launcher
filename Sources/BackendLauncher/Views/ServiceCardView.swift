@@ -79,6 +79,11 @@ struct ServiceCardView: View {
                         Text("·")
                         Text(controller.status.label)
                             .foregroundStyle(controller.status.color)
+                        if !controller.config.startAfter.isEmpty {
+                            Text("·")
+                            Text("dopo \(controller.config.startAfter.joined(separator: ", "))")
+                                .help("All'avvio del progetto parte dopo che questi backend sono pronti")
+                        }
                         if let branch = controller.gitBranch {
                             Text("·")
                             Label(branch, systemImage: "arrow.triangle.branch")

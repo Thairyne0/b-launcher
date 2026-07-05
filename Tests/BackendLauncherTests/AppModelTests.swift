@@ -157,6 +157,63 @@ import Testing
         #expect(ids == ["ProjA/svc", "ProjB/svc"])
     }
 
+    @Test func startProjectRespectsStartAfterOrder() async throws {
+        // "primo" diventa running quando stampa il marker; "secondo" dipende da lui:
+        // quando "secondo" risulta vivo, "primo" DEVE già essere running.
+        let store = ServiceStore(fileURL: tempStoreURL())
+        try store.addProject(named: "P")
+        try store.addService(
+            StoredService(name: "primo", directory: "/tmp", command: "echo pronto-adesso && sleep 60",
+                          readiness: StoredReadiness(kind: .logMarker, port: nil, marker: "pronto-adesso")),
+            toProject: "P")
+        try store.addService(
+            StoredService(name: "secondo", directory: "/tmp", command: "sleep 60",
+                          readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+                          startAfter: ["primo"]),
+            toProject: "P")
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        let primo = try #require(model.services.first { $0.config.name == "primo" })
+        let secondo = try #require(model.services.first { $0.config.name == "secondo" })
+
+        model.startProject(named: "P")
+
+        let secondoAlive = await waitUntil { secondo.processAlive }
+        #expect(secondoAlive)
+        // L'orchestratore ha aspettato la readiness di "primo" prima di avviare "secondo".
+        #expect(primo.status == .running)
+
+        model.stopAll()
+        _ = await waitUntil { model.services.allSatisfy { !$0.processAlive } }
+    }
+
+    @Test func dependencyCycleFallsBackToFlatStart() async throws {
+        let store = ServiceStore(fileURL: tempStoreURL())
+        try store.addProject(named: "P")
+        try store.addService(
+            StoredService(name: "a", directory: "/tmp", command: "sleep 60",
+                          readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+                          startAfter: ["b"]),
+            toProject: "P")
+        try store.addService(
+            StoredService(name: "b", directory: "/tmp", command: "sleep 60",
+                          readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+                          startAfter: ["a"]),
+            toProject: "P")
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+
+        model.startProject(named: "P")
+
+        // Ciclo: nessun deadlock, partono comunque entrambi (avvio piatto + avviso nei log).
+        let allAlive = await waitUntil { model.services.allSatisfy { $0.processAlive } }
+        #expect(allAlive)
+        #expect(model.services.allSatisfy { c in
+            c.logs.lines.contains { $0.text.contains("dipendenze circolari") }
+        })
+
+        model.stopAll()
+        _ = await waitUntil { model.services.allSatisfy { !$0.processAlive } }
+    }
+
     @Test func globalErrorsAggregatesAcrossServicesSortedByTime() {
         let model = AppModel(configs: fakeConfigs, cwd: "/tmp", pollingEnabled: false)
         model.services[0].logs.ingest("riga normale\n10:00:01 ERROR boom-a\n")

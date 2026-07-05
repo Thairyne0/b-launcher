@@ -110,6 +110,27 @@ import Testing
         #expect(reloaded.projects == store.projects)
     }
 
+    @Test func startAfterPersistsBridgesAndBumpsVersionTo2() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore.seededWithSkillera(fileURL: url)
+        var project = try #require(store.projects.first)
+        project.services.append(StoredService(
+            name: "dipendente", directory: "/tmp/d", command: "true",
+            readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+            startAfter: ["gateway"]))
+        store.replaceProject(project)
+        store.save()
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.services.last?.startAfter == ["gateway"])
+        let config = try #require(reloaded.serviceConfigs(for: reloaded.projects[0]).last)
+        #expect(config.startAfter == ["gateway"])
+
+        // Feature v2 in uso → il file dichiara version 2.
+        let decoded = try JSONDecoder().decode(StoreFile.self, from: Data(contentsOf: url))
+        #expect(decoded.version == 2)
+    }
+
     @Test func storeWithoutHttpHealthKeepsVersion1ForDowngradeFriendliness() throws {
         let url = tempStoreURL()
         _ = ServiceStore(fileURL: url)

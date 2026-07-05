@@ -68,6 +68,7 @@ struct ServiceFormSheet: View {
     @State private var symbolName: String?
     @State private var envBadgeDisabled = false
     @State private var envFileURL: URL?
+    @State private var startAfter: Set<String> = []
     @State private var saveError: String?
     /// Evita di mostrare "il nome non può essere vuoto" prima ancora che l'utente abbia
     /// interagito col form (fastidioso in modalità "add" a sheet appena aperta).
@@ -247,6 +248,8 @@ struct ServiceFormSheet: View {
 
             iconSection
 
+            startAfterSection
+
             Toggle("Questo backend non usa un file .env (nascondi il badge \".env mancante\")",
                    isOn: $envBadgeDisabled)
                 .font(.callout)
@@ -320,6 +323,38 @@ struct ServiceFormSheet: View {
         .help(preset.displaySymbolName)
     }
 
+    /// Altri servizi del progetto selezionabili come dipendenze di avvio. Il servizio in
+    /// modifica è escluso (auto-dipendenza = ciclo garantito).
+    private var dependencyCandidates: [String] {
+        guard let project = existingProject else { return [] }
+        let selfName: String? = {
+            if case .edit(let original) = mode { return original }
+            return nil
+        }()
+        return project.services.map(\.name).filter { $0 != selfName }
+    }
+
+    @ViewBuilder
+    private var startAfterSection: some View {
+        if !dependencyCandidates.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Parte dopo (opzionale)").font(.headline)
+                Text("All'avvio del progetto, questo backend attende che i selezionati siano pronti (verdi) prima di partire.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(dependencyCandidates, id: \.self) { name in
+                    Toggle(name, isOn: Binding(
+                        get: { startAfter.contains(name) },
+                        set: { on in
+                            if on { startAfter.insert(name) } else { startAfter.remove(name) }
+                        }
+                    ))
+                    .font(.callout)
+                }
+            }
+        }
+    }
+
     /// NSOpenPanel diretto: `.fileImporter` da una sheet modale è inaffidabile su macOS.
     private func chooseFolder() {
         let panel = NSOpenPanel()
@@ -358,6 +393,7 @@ struct ServiceFormSheet: View {
         symbolName = service.symbolName
         envBadgeDisabled = service.envBadgeDisabled ?? false
         envFileURL = service.envFile.map(URL.init(fileURLWithPath:))
+        startAfter = Set(service.startAfter ?? [])
     }
 
     /// Picker per il file env alternativo (file nascosti visibili: .env.* iniziano col punto).
@@ -395,7 +431,8 @@ struct ServiceFormSheet: View {
                                     command: command.trimmingCharacters(in: .whitespacesAndNewlines),
                                     readiness: readiness, symbolName: symbolName,
                                     envBadgeDisabled: envBadgeDisabled ? true : nil,
-                                    envFile: envFileURL?.path)
+                                    envFile: envFileURL?.path,
+                                    startAfter: startAfter.isEmpty ? nil : startAfter.sorted())
         do {
             switch mode {
             case .add:

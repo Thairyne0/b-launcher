@@ -39,6 +39,10 @@ struct StoredService: Codable, Hashable {
     /// non-invasivo). Additivo: assente nei file vecchi → `nil`. NON esportato nei
     /// template (path assoluto personale).
     var envFile: String? = nil
+    /// Nomi di servizi dello STESSO progetto che devono essere pronti prima che questo
+    /// parta (avvio orchestrato a ondate). Richiede schema v2 quando usato — vedi
+    /// `versionRequired`. Nomi sconosciuti/stantii vengono ignorati a runtime.
+    var startAfter: [String]? = nil
 }
 
 struct StoredInfraCheck: Codable, Hashable {
@@ -151,10 +155,12 @@ final class ServiceStore {
     /// servizio usa `httpHealth` (kind sconosciuto alle app v1), altrimenti 1 — così un file
     /// che non usa feature nuove resta leggibile anche dopo un downgrade dell'app.
     static func versionRequired(for projects: [StoredProject]) -> Int {
-        let usesHTTPHealth = projects.contains { project in
-            project.services.contains { $0.readiness.kind == .httpHealth }
+        let usesV2Features = projects.contains { project in
+            project.services.contains {
+                $0.readiness.kind == .httpHealth || !($0.startAfter ?? []).isEmpty
+            }
         }
-        return usesHTTPHealth ? 2 : 1
+        return usesV2Features ? 2 : 1
     }
 
     static var defaultFileURL: URL {
@@ -594,6 +600,7 @@ final class ServiceStore {
             )
             config.envBadgeDisabled = service.envBadgeDisabled ?? false
             config.envFile = service.envFile
+            config.startAfter = service.startAfter ?? []
             return config
         }
     }

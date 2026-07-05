@@ -46,6 +46,8 @@ struct ServiceConfig: Identifiable, Hashable {
     var envBadgeDisabled: Bool = false
     /// File env alternativo da iniettare nell'ambiente allo spawn (vedi StoredService).
     var envFile: String? = nil
+    /// Nomi (brevi, stesso progetto) dei servizi da attendere prima dell'avvio.
+    var startAfter: [String] = []
 
     /// Namespaced su `projectName` quando presente ("Progetto/nome"), altrimenti il nome
     /// nudo — questo mantiene `id == name` per ogni config costruita senza `projectName`

@@ -18,6 +18,9 @@ struct ProjectTemplate: Codable {
         /// Additivo: assente nei template vecchi → `nil`; le app vecchie che leggono un
         /// template nuovo ignorano la chiave sconosciuta (nessun bump di versione).
         var envBadgeDisabled: Bool? = nil
+        /// Dipendenze di avvio (nomi nello stesso template). Se presente e non vuota,
+        /// il template dichiara version 2 — vedi `versionRequired`.
+        var startAfter: [String]? = nil
     }
 }
 
@@ -50,7 +53,9 @@ enum ProjectTemplateCodec {
     /// sconosciuta alle app v1), altrimenti 1 — un collega con l'app vecchia importa senza
     /// problemi i template che non usano feature nuove.
     static func versionRequired(for services: [ProjectTemplate.TemplateService]) -> Int {
-        services.contains { $0.readiness.kind == .httpHealth } ? 2 : 1
+        services.contains {
+            $0.readiness.kind == .httpHealth || !($0.startAfter ?? []).isEmpty
+        } ? 2 : 1
     }
 
     /// Export: calcola i path relativi rispetto a `root`. Servizi FUORI da root → path
@@ -63,7 +68,8 @@ enum ProjectTemplateCodec {
                 relativeDirectory: relativePath(forServiceDirectory: service.directory, root: standardizedRoot),
                 command: service.command,
                 readiness: service.readiness,
-                envBadgeDisabled: service.envBadgeDisabled
+                envBadgeDisabled: service.envBadgeDisabled,
+                startAfter: service.startAfter
             )
         }
         return ProjectTemplate(
@@ -93,7 +99,8 @@ enum ProjectTemplateCodec {
                 directory: resolvedDirectory(relativeDirectory: relative, root: standardizedRoot),
                 command: templateService.command,
                 readiness: templateService.readiness,
-                envBadgeDisabled: templateService.envBadgeDisabled
+                envBadgeDisabled: templateService.envBadgeDisabled,
+                startAfter: templateService.startAfter
             )
         }
         let name = nameOverride?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
