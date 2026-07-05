@@ -96,11 +96,14 @@ enum HelpContent {
                 .bullets([
                     "Griglia — tutti i servizi.",
                     "Focus — terminali affiancati, selezionabili tramite chip.",
+                    "Errori — le righe di errore di TUTTI i backend in un'unica lista ordinata per tempo (badge col totale in sidebar); click su una riga per aprire il terminale del servizio.",
                     "Vista singolo servizio — click sul servizio in sidebar."
                 ]),
                 .subheading("Card servizio"),
                 .bullets([
-                    "Pill con uptime e utilizzo CPU/RAM.",
+                    "Pill con uptime, CPU/RAM e (per i probe HTTP) latenza del health check.",
+                    "Branch git della cartella accanto allo stato — arancio se diverso dagli altri backend del progetto (worktree dimenticato).",
+                    "Label rossa \"crash loop\" se il backend crasha ≥3 volte in 2 minuti (uno stop manuale azzera il conteggio).",
                     "Badge errori cliccabile.",
                     "Badge \".env mancante — crealo\" se la cartella del backend non contiene un file .env: cliccalo per crearlo guidato (la stessa mancanza è segnalata da un'icona 🔑 accanto al backend in sidebar).",
                     "Sottotitolo con l'ultima riga di log."
@@ -142,6 +145,12 @@ enum HelpContent {
                 .paragraph("Sulla pagina di un progetto la toolbar sdoppia le azioni di massa: \"Avvia progetto\" / \"Ferma progetto\" (solo i backend di quel progetto — l'avvio è il bottone prominente) accanto ad \"Avvia tutti\" / \"Ferma tutti\" (globali). Le azioni di massa chiedono conferma; ogni popup è disattivabile dalle Impostazioni."),
                 .paragraph("Se le cartelle dei backend non esistono su questo Mac, un banner \"cartelle mancanti\" te lo segnala, con la possibilità di ripuntare la cartella o eliminare il progetto direttamente da lì."),
                 .paragraph("Per modificare un servizio, usa il tasto destro sul rigo: va prima fermato. Se modifichi un servizio mentre è in esecuzione, le modifiche restano \"in sospeso\" (icona arancione) e si applicano solo quando lo fermi."),
+                .subheading("Ordine di avvio (\"Parte dopo\")"),
+                .paragraph("Nel form di un backend puoi dichiarare che parte DOPO altri backend del progetto (es. tutto dopo il gateway). L'avvio di progetto e profili procede a ondate: la successiva parte quando la precedente è verde, con timeout di 90 secondi a ondata (scaduto, si procede comunque). Dipendenze circolari → avvio normale con avviso nei log."),
+                .subheading("File env alternativo"),
+                .paragraph("Sempre nel form puoi scegliere un file env alternativo (es. .env.staging): all'avvio le sue variabili vengono iniettate nell'ambiente del processo e vincono su quelle del .env. Il .env su disco non viene mai toccato — per tornare al normale basta rimuovere il file dal form."),
+                .subheading("Spia infrastruttura per progetto"),
+                .paragraph("Ogni progetto può avere la sua spia (NATS, Redis, …): l'indicatore in toolbar mostra quella del progetto selezionato e il warning d'avvio usa la spia del progetto giusto."),
                 .subheading("File .env mancante"),
                 .paragraph("Un backend appena clonato di solito non ha il file .env (è escluso da git). La card lo segnala con un badge cliccabile: si apre una finestra dove incolli il contenuto ricevuto da un collega, o lo importi da un file, e il launcher crea .env nella cartella del backend."),
                 .bullets([
@@ -237,7 +246,8 @@ enum HelpContent {
                     "\"Cartella mancante\" — il percorso non esiste su questo Mac: usa \"Cambia cartella radice\" o \"Modifica\".",
                     "\".env mancante\" — la cartella del backend non contiene il file .env: clicca il badge sulla card per crearlo incollando il contenuto.",
                     "Spia infrastruttura rossa — il broker/DB del progetto è giù: i backend partono ma non comunicano.",
-                    "Avvio lento oltre 90 secondi — controlla i log per capire cosa sta succedendo."
+                    "Avvio lento oltre 90 secondi — controlla i log per capire cosa sta succedendo.",
+                    "\"Crash loop\" — il backend muore subito dopo l'avvio, ripetutamente: apri il terminale e guarda le ultime righe prima dell'exit (spesso .env mancante o porta occupata)."
                 ]),
                 .subheading("Limitazione Docker"),
                 .paragraph("Se il comando di un backend usa Docker (es. \"docker compose up\"), il launcher ferma solo il comando: i container restano attivi. Prevedi uno stop manuale (\"docker compose down\") — il form di modifica del backend te lo ricorda quando rileva \"docker\" nel comando."),

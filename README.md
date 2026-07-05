@@ -161,9 +161,27 @@ Derivati da fatti osservabili, nessuna macchina a stati nascosta:
   porta (comando + pid, via `lsof`), così sai cosa fermare.
 
 Oltre allo stato: badge conteggio errori sulla card, metriche **CPU% / RAM (MB)**
-del process group mentre è in esecuzione, e indicatore **"cartella mancante"**
-se la working directory non esiste più su disco (avvio disabilitato finché non
-torna disponibile).
+del process group mentre è in esecuzione, **branch git** della cartella (arancio
+se diverso dagli altri backend del progetto — worktree dimenticato), **latenza**
+del health check per i servizi con probe HTTP, rilevazione **crash loop** (≥3
+crash in 2 minuti → label rossa; uno stop manuale azzera il conteggio), e
+indicatore **"cartella mancante"** se la working directory non esiste più su
+disco (avvio disabilitato finché non torna disponibile).
+
+- **Pannello Errori**: voce "Errori" in sidebar (badge col totale) con le righe
+  di errore di tutti i backend in un'unica lista ordinata per tempo — per il
+  debugging a cascata; click su una riga → terminale del servizio.
+- **Ordine di avvio**: per ogni backend puoi dichiarare "parte dopo" altri
+  backend del progetto; l'avvio di progetto/profili procede a ondate,
+  attendendo che l'ondata precedente sia verde (timeout 90 s a ondata, poi si
+  procede comunque; cicli → avvio piatto con avviso nei log).
+- **File env alternativo**: per backend puoi scegliere un file (es.
+  `.env.staging`) le cui variabili vengono iniettate nell'ambiente del processo
+  all'avvio, vincendo su quelle del `.env` — il `.env` su disco non viene mai
+  toccato.
+- **Spia infrastruttura per progetto**: ogni progetto ha la sua (l'indicatore
+  in toolbar segue il progetto selezionato) e il warning d'avvio usa la spia
+  del progetto giusto.
 
 - **Badge ".env mancante"**: se la cartella del servizio esiste ma non contiene
   `.env` (tipico backend appena clonato), la card mostra un badge cliccabile —
@@ -230,7 +248,7 @@ Progetti e servizi sono persistiti in
 zero progetti, si comincia dalla schermata di benvenuto e da "＋ Aggiungi
 progetto" (wizard, scansione cartella, import template o Claude Code). Il file
 dichiara la versione minima necessaria a leggerlo (resta v1 finché non usi
-feature v2 come il health check HTTP). Un file scritto da una versione futura
+feature v2 come il health check HTTP o le dipendenze di avvio). Un file scritto da una versione futura
 dell'app viene preservato as-is (rinominato `.futureversion`) invece di essere
 sovrascritto.
 
