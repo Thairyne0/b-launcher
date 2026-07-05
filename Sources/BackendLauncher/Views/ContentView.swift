@@ -269,6 +269,11 @@ struct ContentView: View {
             case .focus:
                 FocusView(model: model)
                     .transition(.opacity)
+            case .errors:
+                GlobalErrorsView(model: model) { serviceID in
+                    selectionRaw = SidebarSelectionCoding.encode(.service(serviceID))
+                }
+                .transition(.opacity)
             case .service(let id):
                 if let controller = model.services.first(where: { $0.id == id }) {
                     ServicePaneView(controller: controller)

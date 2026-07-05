@@ -10,6 +10,9 @@ struct LogLine: Identifiable, Equatable {
     let id: Int
     let text: String
     let level: LogLevel
+    /// Timestamp di INGESTIONE (non del log originale): sufficiente per ordinare gli
+    /// errori cross-servizio nel pannello errori globale.
+    var receivedAt: Date = Date()
 }
 
 /// Ring buffer di righe di log per un servizio. Tutte le mutazioni su MainActor.

@@ -157,6 +157,20 @@ import Testing
         #expect(ids == ["ProjA/svc", "ProjB/svc"])
     }
 
+    @Test func globalErrorsAggregatesAcrossServicesSortedByTime() {
+        let model = AppModel(configs: fakeConfigs, cwd: "/tmp", pollingEnabled: false)
+        model.services[0].logs.ingest("riga normale\n10:00:01 ERROR boom-a\n")
+        model.services[1].logs.ingest("10:00:02 ERROR boom-b\n")
+
+        let errors = model.globalErrors
+
+        #expect(errors.count == 2)
+        #expect(Set(errors.map(\.serviceName)) == ["a", "b"])
+        #expect(errors.allSatisfy { $0.line.text.contains("boom") })
+        // Ordinati dal più recente al più vecchio.
+        #expect(zip(errors, errors.dropFirst()).allSatisfy { $0.line.receivedAt >= $1.line.receivedAt })
+    }
+
     @Test func infraStatusTrackedPerProject() async throws {
         // Due progetti con spie infra su porte diverse: una in ascolto, l'altra no.
         let listener = makeTCPListener()

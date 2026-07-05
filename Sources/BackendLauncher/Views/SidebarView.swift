@@ -31,6 +31,8 @@ struct TemplateJSONDocument: FileDocument {
 enum SidebarSelection: Hashable {
     case grid
     case focus
+    /// Pannello errori globale: errori di tutti i servizi, ordinati per tempo.
+    case errors
     case service(String)
     case project(String)
 }
@@ -45,6 +47,7 @@ enum SidebarSelectionCoding {
         switch selection {
         case .grid: return "grid"
         case .focus: return "focus"
+        case .errors: return "errors"
         case .service(let id): return servicePrefix + id
         case .project(let id): return projectPrefix + id
         }
@@ -54,6 +57,7 @@ enum SidebarSelectionCoding {
     static func decode(_ raw: String) -> SidebarSelection {
         if raw == "grid" { return .grid }
         if raw == "focus" { return .focus }
+        if raw == "errors" { return .errors }
         if raw.hasPrefix(servicePrefix) {
             let id = String(raw.dropFirst(servicePrefix.count))
             guard !id.isEmpty else { return .grid }
@@ -135,6 +139,10 @@ struct SidebarView: View {
 
                     Label("Focus", systemImage: "rectangle.on.rectangle")
                         .tag(SidebarSelection.focus)
+
+                    Label("Errori", systemImage: "exclamationmark.triangle")
+                        .badge(totalErrorCount)
+                        .tag(SidebarSelection.errors)
                 }
 
                 Section {
@@ -369,6 +377,11 @@ struct SidebarView: View {
 
     private func controllers(forProject project: StoredProject) -> [ServiceController] {
         model.services.filter { $0.config.projectName == project.name }
+    }
+
+    /// Errori totali su tutti i servizi, per il badge della riga "Errori".
+    private var totalErrorCount: Int {
+        model.services.reduce(0) { $0 + $1.logs.errorCount }
     }
 
     /// Riga progetto: `DisclosureGroup` per il chevron espandi/comprimi + i rigi servizio,

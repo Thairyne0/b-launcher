@@ -212,6 +212,30 @@ final class AppModel {
         revealRequestCount += 1
     }
 
+    /// Riga di errore di un servizio, per il pannello errori globale.
+    struct GlobalErrorEntry: Identifiable {
+        let serviceID: String
+        let serviceName: String
+        let line: LogLine
+        var id: String { "\(serviceID)#\(line.id)" }
+    }
+
+    /// Errori di TUTTI i servizi, dal più recente, cap a 500 (il pannello è per "cosa
+    /// sta succedendo adesso", non un archivio — i log completi restano nei terminali).
+    /// Derivato on-demand dai LogStore esistenti: nessun secondo buffer da mantenere.
+    var globalErrors: [GlobalErrorEntry] {
+        var entries: [GlobalErrorEntry] = []
+        for service in services {
+            for line in service.logs.lines where line.level == .error {
+                entries.append(GlobalErrorEntry(serviceID: service.id,
+                                                serviceName: service.config.displayName,
+                                                line: line))
+            }
+        }
+        entries.sort { $0.line.receivedAt > $1.line.receivedAt }
+        return Array(entries.prefix(500))
+    }
+
     /// Servizi raggruppati per progetto, preservando l'ordine di prima apparizione del
     /// `projectName` in `services` (che rispecchia l'ordine dei progetti nello store).
     /// Usato dalla menu bar per offrire avvia/ferma per singolo progetto.

@@ -113,6 +113,11 @@ import Testing
         #expect(SidebarSelectionCoding.encode(.focus) == "focus")
     }
 
+    @Test func encodeDecodeErrors() {
+        #expect(SidebarSelectionCoding.encode(.errors) == "errors")
+        #expect(SidebarSelectionCoding.decode("errors") == .errors)
+    }
+
     @Test func encodeService() {
         #expect(SidebarSelectionCoding.encode(.service("gateway")) == "service:gateway")
     }
