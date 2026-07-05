@@ -101,6 +101,14 @@ struct ServiceCardView: View {
                             .help(controller.config.workingDirectory.path)
                     }
 
+                    if controller.isCrashLooping {
+                        Label("crash loop (\(controller.recentCrashCount) crash in 2 min)",
+                              systemImage: "exclamationmark.arrow.circlepath")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .help("Il backend continua a crashare all'avvio: guarda le ultime righe del terminale. Uno stop manuale azzera il conteggio.")
+                    }
+
                     if controller.status == .external, let portOwner {
                         Label("porta occupata da: \(portOwner)", systemImage: "person.crop.circle.badge.exclamationmark")
                             .font(.caption2.weight(.medium))

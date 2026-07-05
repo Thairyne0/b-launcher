@@ -32,6 +32,14 @@ final class ServiceController: Identifiable {
     // servizi con readiness .logMarker: pronto quando il log annuncia l'avvio
     private(set) var readyMarkerSeen = false
 
+    /// Storico crash per il rilevamento del crash loop (≥3 in 2 min). Stored property:
+    /// le mutazioni della struct sono osservate da @Observable, quindi la card si
+    /// ridisegna quando cambia. I crash vecchi escono da soli dalla finestra.
+    private(set) var crashLoop = CrashLoopDetector()
+
+    var isCrashLooping: Bool { crashLoop.isLooping(at: Date()) }
+    var recentCrashCount: Int { crashLoop.recentCrashCount(at: Date()) }
+
     private var process: SpawnedProcess?
     private var stopRequested = false
     private var lastExitCode: Int32?
@@ -222,6 +230,8 @@ final class ServiceController: Identifiable {
 
     func stop() {
         guard processAlive, let process else { return }
+        // Stop manuale = l'utente ha ripreso il controllo: il conteggio crash riparte.
+        crashLoop.reset()
         stopRequested = true
         logs.ingest("[launcher] ── stop richiesto ──\n")
         process.terminate(gracePeriod: AppSettings.killGracePeriodSeconds)
@@ -256,6 +266,7 @@ final class ServiceController: Identifiable {
         logs.ingest("[launcher] ── processo terminato (exit \(code)) ──\n")
         fileWriter.appendBanner("processo terminato (exit \(code))")
         if isCrash {
+            crashLoop.recordCrash(at: Date())
             onCrash?(config.displayName, code)
         }
         if pendingRestart {
