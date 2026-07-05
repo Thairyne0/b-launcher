@@ -425,8 +425,10 @@ final class AppModel {
                 if !healthTargets.isEmpty {
                     let healthResults = await Self.checkHealthEndpoints(healthTargets.map(\.endpoint))
                     for target in healthTargets {
-                        self.services.first { $0.id == target.id }?.healthOK
-                            = healthResults[target.endpoint] ?? false
+                        guard let service = self.services.first(where: { $0.id == target.id }) else { continue }
+                        let result = healthResults[target.endpoint]
+                        service.healthOK = result?.ok ?? false
+                        service.healthLatencyMs = result?.latencyMs
                     }
                 }
                 // Modifiche di config in sospeso: quando il servizio interessato si è
@@ -486,28 +488,44 @@ final class AppModel {
         delegateQueue: nil
     )
 
+    /// Esito di un probe: pronto (2xx) + latenza della risposta HTTP, se ce n'è stata una
+    /// (anche non-2xx). Connessione fallita → `latencyMs` nil.
+    struct HealthProbeResult: Equatable, Sendable {
+        let ok: Bool
+        let latencyMs: Int?
+    }
+
     /// GET concorrente su ogni endpoint; 2xx = pronto. Un redirect (es. verso una pagina di
     /// login) NON è "pronto": conta lo status della prima risposta.
-    static func checkHealthEndpoints(_ endpoints: [HealthEndpoint]) async -> [HealthEndpoint: Bool] {
+    static func checkHealthEndpoints(_ endpoints: [HealthEndpoint]) async -> [HealthEndpoint: HealthProbeResult] {
         let unique = Array(Set(endpoints))
-        var results: [HealthEndpoint: Bool] = [:]
-        await withTaskGroup(of: (HealthEndpoint, Bool).self) { group in
+        var results: [HealthEndpoint: HealthProbeResult] = [:]
+        await withTaskGroup(of: (HealthEndpoint, HealthProbeResult).self) { group in
             for endpoint in unique {
                 group.addTask { (endpoint, await Self.probeHealth(endpoint)) }
             }
-            for await (endpoint, ok) in group {
-                results[endpoint] = ok
+            for await (endpoint, result) in group {
+                results[endpoint] = result
             }
         }
         return results
     }
 
-    private static func probeHealth(_ endpoint: HealthEndpoint) async -> Bool {
+    private static func probeHealth(_ endpoint: HealthEndpoint) async -> HealthProbeResult {
         let path = endpoint.path.hasPrefix("/") ? endpoint.path : "/" + endpoint.path
-        guard let url = URL(string: "http://127.0.0.1:\(endpoint.port)\(path)") else { return false }
+        guard let url = URL(string: "http://127.0.0.1:\(endpoint.port)\(path)") else {
+            return HealthProbeResult(ok: false, latencyMs: nil)
+        }
+        let clock = ContinuousClock()
+        let start = clock.now
         guard let (_, response) = try? await healthSession.data(from: url),
-              let http = response as? HTTPURLResponse else { return false }
-        return (200..<300).contains(http.statusCode)
+              let http = response as? HTTPURLResponse else {
+            return HealthProbeResult(ok: false, latencyMs: nil)
+        }
+        let elapsed = clock.now - start
+        let ms = Int(elapsed.components.seconds * 1000)
+            + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+        return HealthProbeResult(ok: (200..<300).contains(http.statusCode), latencyMs: ms)
     }
 }
 

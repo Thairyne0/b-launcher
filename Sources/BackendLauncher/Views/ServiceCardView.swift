@@ -140,6 +140,18 @@ struct ServiceCardView: View {
                     }
                 }
 
+                if controller.processAlive, case .httpHealth = controller.config.readiness,
+                   let latency = controller.healthLatencyMs {
+                    MetricPill(icon: "waveform.path.ecg",
+                               accessibilityLabel: "Latenza health check: \(latency) millisecondi") {
+                        Text("\(latency) ms")
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .animation(.snappy, value: latency)
+                    }
+                    .help("Latenza dell'endpoint di health")
+                }
+
                 if let stats = controller.stats, controller.processAlive {
                     MetricPill(icon: "gauge.with.dots.needle.33percent",
                                accessibilityLabel: "CPU e memoria: \(Int(stats.cpuPercent)) per cento, \(Int(stats.rssMB)) megabyte") {

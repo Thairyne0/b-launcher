@@ -32,9 +32,14 @@ import Testing
 
         let results = await AppModel.checkHealthEndpoints([okEndpoint, brokenEndpoint, closedEndpoint])
 
-        #expect(results[okEndpoint] == true)
-        #expect(results[brokenEndpoint] == false)
-        #expect(results[closedEndpoint] == false)
+        #expect(results[okEndpoint]?.ok == true)
+        #expect(results[brokenEndpoint]?.ok == false)
+        #expect(results[closedEndpoint]?.ok == false)
+        // Latenza misurata quando c'è una risposta HTTP (anche non-2xx), assente se la
+        // connessione fallisce del tutto.
+        #expect(results[okEndpoint]?.latencyMs != nil)
+        #expect(results[brokenEndpoint]?.latencyMs != nil)
+        #expect(results[closedEndpoint]?.latencyMs == nil)
     }
 
     @Test func startAllAndStopAll() async {

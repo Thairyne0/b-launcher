@@ -15,6 +15,8 @@ final class ServiceController: Identifiable {
     /// Esito dell'ultimo health check HTTP (readiness `.httpHealth`), aggiornato dal
     /// poller di AppModel come `portOpen`.
     var healthOK = false
+    /// Latenza (ms) dell'ultima risposta del health check — diagnosi "su ma lento".
+    var healthLatencyMs: Int?
     /// Branch git corrente della working directory (nil = non è un repo), aggiornato
     /// periodicamente dal poller di AppModel — mai calcolato a render time.
     var gitBranch: String?
