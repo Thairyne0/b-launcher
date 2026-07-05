@@ -116,25 +116,28 @@ private struct OptionalAccessibilityLabel: ViewModifier {
     }
 }
 
-/// Spia NATS per la toolbar.
+/// Spia infrastruttura per la toolbar (storicamente "NATS", ora parametrica: mostra la
+/// spia del progetto selezionato). Default legacy per compatibilità con i chiamanti storici.
 struct NATSIndicator: View {
     let up: Bool
+    var label: String = "NATS"
+    var port: UInt16 = 4222
 
     var body: some View {
         HStack(spacing: 6) {
             Circle()
                 .fill((up ? Color.green : Color.red).gradient)
                 .frame(width: 9, height: 9)
-            Text("NATS")
+            Text(label)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .fixedSize()
-        .help(up ? "NATS raggiungibile su localhost:4222"
-                 : "NATS NON raggiungibile (localhost:4222) — i backend non comunicano")
-        .accessibilityLabel(up ? "NATS raggiungibile su localhost 4222"
-                               : "NATS non raggiungibile su localhost 4222, i backend non comunicano")
+        .help(up ? "\(label) raggiungibile su localhost:\(port)"
+                 : "\(label) NON raggiungibile (localhost:\(port)) — i backend non comunicano")
+        .accessibilityLabel(up ? "\(label) raggiungibile su localhost \(port)"
+                               : "\(label) non raggiungibile su localhost \(port), i backend non comunicano")
     }
 }

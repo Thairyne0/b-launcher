@@ -238,12 +238,22 @@ struct ContentView: View {
     /// Titolo dinamico dell'alert infrastruttura, derivato da `model.infraCheck` invece che
     /// hardcoded su NATS/4222: il progetto scansionato/configurato può dichiarare un'altra
     /// spia (Redis, Postgres, ...), quindi titolo e messaggio devono seguirla.
+    /// Spia infra pertinente per la selezione corrente (vedi nota nella toolbar).
+    private func infraEntry(for selection: SidebarSelection) -> (projectName: String, check: StoredInfraCheck)? {
+        if case .project(let id) = selection,
+           let entry = model.infraChecks.first(where: { $0.projectName == id }) {
+            return entry
+        }
+        if case .project = selection { return nil }
+        return model.infraChecks.first
+    }
+
     private var infraAlertTitle: String {
-        "\(model.infraCheck?.label ?? "Infrastruttura") non raggiungibile"
+        "\((model.warningInfraCheck ?? model.infraCheck)?.label ?? "Infrastruttura") non raggiungibile"
     }
 
     private var infraAlertMessage: String {
-        let port = model.infraCheck?.port.description ?? "?"
+        let port = (model.warningInfraCheck ?? model.infraCheck)?.port.description ?? "?"
         return "La porta \(port) è chiusa: i backend partono ma potrebbero non funzionare correttamente. Controlla che l'infrastruttura del progetto sia attiva."
     }
 
@@ -300,7 +310,14 @@ struct ContentView: View {
         .navigationTitle(navigationTitle(for: currentSelection))
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                NATSIndicator(up: model.natsUp)
+                // La spia segue il contesto: sulla pagina di un progetto mostra il SUO
+                // check; su Griglia/Focus il primo configurato (storico). Progetti senza
+                // spia → niente indicatore (meglio di uno che mente).
+                if let entry = infraEntry(for: currentSelection) {
+                    NATSIndicator(up: model.infraUp[entry.projectName] == true,
+                                  label: entry.check.label,
+                                  port: entry.check.port)
+                }
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 if isGridLike(currentSelection) {

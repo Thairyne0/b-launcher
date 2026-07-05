@@ -7,7 +7,16 @@ import Observation
 @Observable
 final class AppModel {
     private(set) var services: [ServiceController]
+    /// Compatibilità storica: stato della spia del PRIMO progetto che ne ha una.
+    /// La verità multi-progetto è `infraUp`.
     private(set) var natsUp = false
+    /// Stato della spia infrastruttura per progetto (nome progetto → porta raggiungibile).
+    /// Solo i progetti con `infraCheck` configurato compaiono qui.
+    private(set) var infraUp: [String: Bool] = [:]
+    /// Tutte le spie configurate, in ordine di progetto nello store.
+    private(set) var infraChecks: [(projectName: String, check: StoredInfraCheck)] = []
+    /// Il check che ha fatto scattare l'ultimo warning (per titolo/messaggio dell'alert).
+    private(set) var warningInfraCheck: StoredInfraCheck?
     var showNATSWarning = false
     var stopAllRequested = false
     var expandedServices: Set<String> = []
@@ -60,6 +69,9 @@ final class AppModel {
         self.store = store
         self.crashNotificationsEnabled = crashNotificationsEnabled
         self.infraCheck = store.projects.first { $0.infraCheck != nil }?.infraCheck
+        self.infraChecks = store.projects.compactMap { project in
+            project.infraCheck.map { (projectName: project.name, check: $0) }
+        }
         let (flatProfiles, grouped) = Self.buildProfiles(from: store.projects)
         self.profiles = flatProfiles
         self.projectProfiles = grouped
@@ -78,6 +90,7 @@ final class AppModel {
         self.store = nil
         self.crashNotificationsEnabled = crashNotificationsEnabled
         self.infraCheck = StoredInfraCheck(label: "NATS", port: ServiceConfig.natsPort)
+        self.infraChecks = [(projectName: "", check: StoredInfraCheck(label: "NATS", port: ServiceConfig.natsPort))]
         self.profiles = ServiceConfig.legacyProfiles
         self.projectProfiles = [(projectName: "", profiles: ServiceConfig.legacyProfiles)]
         services = configs.map { Self.makeController(config: $0, cwd: cwd, crashNotificationsEnabled: crashNotificationsEnabled) }
@@ -115,6 +128,12 @@ final class AppModel {
     func reloadFromStore() {
         guard let store else { return }
         self.infraCheck = store.projects.first { $0.infraCheck != nil }?.infraCheck
+        self.infraChecks = store.projects.compactMap { project in
+            project.infraCheck.map { (projectName: project.name, check: $0) }
+        }
+        self.infraUp = self.infraUp.filter { key, _ in
+            self.infraChecks.contains { $0.projectName == key }
+        }
         let (flatProfiles, grouped) = Self.buildProfiles(from: store.projects)
         self.profiles = flatProfiles
         self.projectProfiles = grouped
@@ -219,7 +238,11 @@ final class AppModel {
     }
 
     func startAll() {
-        if !natsUp { showNATSWarning = true }  // avvisa ma procedi (spec)
+        // Avvisa (ma procedi, come da spec storica) se QUALSIASI spia configurata è giù.
+        if let down = firstDownInfra {
+            warningInfraCheck = down
+            showNATSWarning = true
+        }
         for service in services where !service.processAlive {
             service.start()
         }
@@ -233,7 +256,10 @@ final class AppModel {
     /// storico, corretto quando c'è un solo progetto). Con più progetti che condividono
     /// nomi di servizio, preferire `start(profile:inProject:)`.
     func start(profile: LaunchProfile) {
-        if !natsUp { showNATSWarning = true }
+        if let down = firstDownInfra {
+            warningInfraCheck = down
+            showNATSWarning = true
+        }
         for service in services
         where profile.serviceNames.contains(service.config.name) && !service.processAlive {
             service.start()
@@ -244,7 +270,7 @@ final class AppModel {
     /// MA ristretto ai servizi di quel progetto (namespaced id "progetto/nome"), così due
     /// progetti con servizi omonimi non si confondono.
     func start(profile: LaunchProfile, inProject projectName: String) {
-        if !natsUp { showNATSWarning = true }
+        warnIfInfraDown(forProject: projectName)
         for service in services
         where service.config.projectName == projectName
             && profile.serviceNames.contains(service.config.name)
@@ -257,7 +283,7 @@ final class AppModel {
     /// `config.projectName`, non sul nome breve del servizio). Stessa guardia NATS di
     /// `startAll()`: avvisa (se l'infra check non è su) ma procede comunque.
     func startProject(named projectName: String) {
-        if !natsUp && infraCheck != nil { showNATSWarning = true }
+        warnIfInfraDown(forProject: projectName)
         for service in services
         where service.config.projectName == projectName && !service.processAlive {
             service.start()
@@ -321,6 +347,37 @@ final class AppModel {
         }
     }
 
+    /// Aggiorna `infraUp`/`natsUp` da un esito di probe porte. Estratto dal poll per
+    /// poterlo pilotare nei test (`refreshInfraStatus`).
+    private func applyInfraResults(_ results: [UInt16: Bool]) {
+        var up: [String: Bool] = [:]
+        for entry in infraChecks {
+            up[entry.projectName] = results[entry.check.port] ?? false
+        }
+        infraUp = up
+        natsUp = infraChecks.first.flatMap { up[$0.projectName] } ?? false
+    }
+
+    /// Probe immediato di tutte le spie infra configurate (fuori dal ciclo di poll).
+    func refreshInfraStatus() async {
+        let results = await Self.checkPorts(infraChecks.map(\.check.port))
+        applyInfraResults(results)
+    }
+
+    /// Primo check configurato che NON risulta raggiungibile (stato sconosciuto = giù,
+    /// come lo storico default `natsUp == false` prima del primo poll).
+    private var firstDownInfra: StoredInfraCheck? {
+        infraChecks.first { infraUp[$0.projectName] != true }?.check
+    }
+
+    /// Warning per l'avvio di un progetto specifico: usa la SUA spia, non la globale.
+    private func warnIfInfraDown(forProject projectName: String) {
+        guard let entry = infraChecks.first(where: { $0.projectName == projectName }),
+              infraUp[entry.projectName] != true else { return }
+        warningInfraCheck = entry.check
+        showNATSWarning = true
+    }
+
     /// Aggiorna `gitBranch`/`gitBranchMismatch` di ogni controller: spawn di `git` fuori
     /// dal MainActor, un giro ogni ~10 tick di poll (≈20s) + uno all'avvio del polling.
     /// Il "mismatch" è rispetto al branch a maggioranza assoluta del progetto: evidenzia
@@ -351,10 +408,10 @@ final class AppModel {
             var firstTick = true
             while !Task.isCancelled {
                 guard let self else { return }
-                let infraPort = self.infraCheck?.port
-                let ports = (infraPort.map { [$0] } ?? []) + self.services.compactMap(\.config.port)
+                let infraPorts = self.infraChecks.map(\.check.port)
+                let ports = infraPorts + self.services.compactMap(\.config.port)
                 let results = await Self.checkPorts(ports)
-                self.natsUp = infraPort.flatMap { results[$0] } ?? false
+                self.applyInfraResults(results)
                 for service in self.services {
                     if let p = service.config.port {
                         service.portOpen = results[p] ?? false

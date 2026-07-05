@@ -152,6 +152,58 @@ import Testing
         #expect(ids == ["ProjA/svc", "ProjB/svc"])
     }
 
+    @Test func infraStatusTrackedPerProject() async throws {
+        // Due progetti con spie infra su porte diverse: una in ascolto, l'altra no.
+        let listener = makeTCPListener()
+        defer { close(listener.fd) }
+        let store = ServiceStore(fileURL: tempStoreURL())
+        try store.addProject(named: "Su")
+        try store.addProject(named: "Giu")
+        try store.updateInfraCheck(projectID: "Su",
+                                   infraCheck: StoredInfraCheck(label: "Redis", port: listener.port))
+        try store.updateInfraCheck(projectID: "Giu",
+                                   infraCheck: StoredInfraCheck(label: "NATS", port: 1))
+
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        await model.refreshInfraStatus()
+
+        #expect(model.infraUp["Su"] == true)
+        #expect(model.infraUp["Giu"] == false)
+        // Compatibilità storica: natsUp riflette il PRIMO progetto con spia configurata.
+        #expect(model.natsUp == true)
+    }
+
+    @Test func startProjectWarnsOnlyWhenItsOwnInfraIsDown() async throws {
+        let listener = makeTCPListener()
+        defer { close(listener.fd) }
+        let store = ServiceStore(fileURL: tempStoreURL())
+        try store.addProject(named: "Su")
+        try store.addProject(named: "Giu")
+        try store.updateInfraCheck(projectID: "Su",
+                                   infraCheck: StoredInfraCheck(label: "Redis", port: listener.port))
+        try store.updateInfraCheck(projectID: "Giu",
+                                   infraCheck: StoredInfraCheck(label: "NATS", port: 1))
+        try store.addService(
+            StoredService(name: "svc", directory: "/tmp", command: "sleep 60",
+                          readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil)),
+            toProject: "Su")
+        try store.addService(
+            StoredService(name: "svc", directory: "/tmp", command: "sleep 60",
+                          readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil)),
+            toProject: "Giu")
+
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        await model.refreshInfraStatus()
+
+        model.startProject(named: "Su")   // infra su: nessun warning
+        #expect(model.showNATSWarning == false)
+        model.startProject(named: "Giu")  // infra giù: warning col check del progetto
+        #expect(model.showNATSWarning == true)
+        #expect(model.warningInfraCheck?.label == "NATS")
+        model.stopAll()
+        _ = await waitUntil { model.services.allSatisfy { !$0.processAlive } }
+    }
+
     @Test func servicesByProjectGroupsPreservingOrder() throws {
         let store = try makeTwoProjectStore()
         let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
