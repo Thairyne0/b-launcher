@@ -321,8 +321,34 @@ final class AppModel {
         }
     }
 
+    /// Aggiorna `gitBranch`/`gitBranchMismatch` di ogni controller: spawn di `git` fuori
+    /// dal MainActor, un giro ogni ~10 tick di poll (≈20s) + uno all'avvio del polling.
+    /// Il "mismatch" è rispetto al branch a maggioranza assoluta del progetto: evidenzia
+    /// il servizio rimasto su un branch diverso (es. worktree dimenticato).
+    func refreshGitBranches() async {
+        let targets = services.map { (id: $0.id, directory: $0.config.workingDirectory) }
+        let branches = await Task.detached(priority: .utility) {
+            var out: [String: String?] = [:]
+            for target in targets { out[target.id] = GitBranch.current(in: target.directory) }
+            return out
+        }.value
+        for service in services {
+            service.gitBranch = branches[service.id] ?? nil
+        }
+        for group in servicesByProject {
+            let known = group.services.compactMap(\.gitBranch)
+            let majority = GitBranch.majority(of: known)
+            for service in group.services {
+                service.gitBranchMismatch = majority != nil
+                    && service.gitBranch != nil
+                    && service.gitBranch != majority
+            }
+        }
+    }
+
     private func startPolling() {
         pollTask = Task { [weak self] in
+            var firstTick = true
             while !Task.isCancelled {
                 guard let self else { return }
                 let infraPort = self.infraCheck?.port
@@ -357,9 +383,11 @@ final class AppModel {
                 // Controllo sync template: costa una lettura file per progetto tracciato, quindi
                 // gira ogni 10 tick (~20s coi valori di default) invece che a ogni giro di poll.
                 self.pollTickCount += 1
-                if self.pollTickCount >= 10 {
+                if firstTick || self.pollTickCount >= 10 {
+                    firstTick = false
                     self.pollTickCount = 0
                     self.refreshTemplateSyncAvailability()
+                    await self.refreshGitBranches()
                 }
                 let pollSeconds = AppSettings.pollIntervalSeconds
                 try? await Task.sleep(nanoseconds: UInt64(pollSeconds * 1_000_000_000))

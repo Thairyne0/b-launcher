@@ -79,6 +79,14 @@ struct ServiceCardView: View {
                         Text("·")
                         Text(controller.status.label)
                             .foregroundStyle(controller.status.color)
+                        if let branch = controller.gitBranch {
+                            Text("·")
+                            Label(branch, systemImage: "arrow.triangle.branch")
+                                .foregroundStyle(controller.gitBranchMismatch ? Color.orange : Color.secondary)
+                                .help(controller.gitBranchMismatch
+                                      ? "Branch diverso dagli altri backend del progetto"
+                                      : "Branch git della cartella")
+                        }
                         if controller.status == .starting, let startedAt = controller.startedAt {
                             startupTimer(since: startedAt)
                         }

@@ -15,6 +15,12 @@ final class ServiceController: Identifiable {
     /// Esito dell'ultimo health check HTTP (readiness `.httpHealth`), aggiornato dal
     /// poller di AppModel come `portOpen`.
     var healthOK = false
+    /// Branch git corrente della working directory (nil = non è un repo), aggiornato
+    /// periodicamente dal poller di AppModel — mai calcolato a render time.
+    var gitBranch: String?
+    /// `true` se `gitBranch` differisce dal branch a maggioranza del progetto (calcolato
+    /// da AppModel nello stesso refresh): la card lo evidenzia in arancio.
+    var gitBranchMismatch = false
 
     /// Statistiche CPU/RAM del process group corrente (nil finché non c'è una seconda lettura).
     private(set) var stats: ProcessStats.Sample?
