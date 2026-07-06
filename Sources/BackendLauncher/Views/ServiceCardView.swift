@@ -155,6 +155,10 @@ struct ServiceCardView: View {
 
                 if controller.processAlive, case .httpHealth = controller.config.readiness,
                    let latency = controller.healthLatencyMs {
+                    if controller.latencyHistory.count >= 2 {
+                        Sparkline(values: controller.latencyHistory, color: .green)
+                            .help("Latenza health: ultimi \(controller.latencyHistory.count) campioni")
+                    }
                     MetricPill(icon: "waveform.path.ecg",
                                accessibilityLabel: "Latenza health check: \(latency) millisecondi") {
                         Text("\(latency) ms")
@@ -163,6 +167,11 @@ struct ServiceCardView: View {
                             .animation(.snappy, value: latency)
                     }
                     .help("Latenza dell'endpoint di health")
+                }
+
+                if controller.processAlive, controller.cpuHistory.count >= 2 {
+                    Sparkline(values: controller.cpuHistory, color: .teal)
+                        .help("CPU: ultimi ~\(controller.cpuHistory.count * 2)s")
                 }
 
                 if let stats = controller.stats, controller.processAlive {

@@ -120,6 +120,14 @@ private func fakeConfig(command: String) -> ServiceConfig {
         _ = await waitUntil { c.status == .stopped }
     }
 
+    @Test func appendCappedKeepsOnlyMostRecentValues() {
+        var values: [Double] = []
+        for i in 0..<40 { ServiceController.appendCapped(Double(i), to: &values, cap: 30) }
+        #expect(values.count == 30)
+        #expect(values.first == 10)
+        #expect(values.last == 39)
+    }
+
     @Test func envFileVariablesInjectedIntoProcessEnvironment() async throws {
         // File env alternativo: le variabili devono arrivare nell'ambiente del processo
         // (echo le rilegge), SENZA che il launcher scriva nulla nella working directory.

@@ -594,6 +594,9 @@ final class AppModel {
                         let result = healthResults[target.endpoint]
                         service.healthOK = result?.ok ?? false
                         service.healthLatencyMs = result?.latencyMs
+                        if let ms = result?.latencyMs {
+                            ServiceController.appendCapped(Double(ms), to: &service.latencyHistory)
+                        }
                     }
                 }
                 // Modifiche di config in sospeso: quando il servizio interessato si è

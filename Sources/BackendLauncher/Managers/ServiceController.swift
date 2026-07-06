@@ -26,6 +26,16 @@ final class ServiceController: Identifiable {
 
     /// Statistiche CPU/RAM del process group corrente (nil finché non c'è una seconda lettura).
     private(set) var stats: ProcessStats.Sample?
+    /// Ultimi ~60s di CPU% (un campione ogni 2s, cap 30) per la sparkline sulla card.
+    private(set) var cpuHistory: [Double] = []
+    /// Ultimi campioni di latenza del health check (ms), riempiti dal poll di AppModel.
+    var latencyHistory: [Double] = []
+
+    /// Append con finestra scorrevole (mantiene gli ULTIMI `cap` valori).
+    static func appendCapped(_ value: Double, to values: inout [Double], cap: Int = 30) {
+        values.append(value)
+        if values.count > cap { values.removeFirst(values.count - cap) }
+    }
     private var statsTask: Task<Void, Never>?
     private var lastCPUSeconds: Double?
 
@@ -238,10 +248,12 @@ final class ServiceController: Identifiable {
                 }.value
                 guard let self, !Task.isCancelled else { return }
                 if let previous = self.lastCPUSeconds {
-                    self.stats = ProcessStats.sample(previousCPUSeconds: previous,
+                    let sample = ProcessStats.sample(previousCPUSeconds: previous,
                                                      currentCPUSeconds: totals.cpuSeconds,
                                                      interval: interval,
                                                      rssBytes: totals.rssBytes)
+                    self.stats = sample
+                    Self.appendCapped(sample.cpuPercent, to: &self.cpuHistory)
                 }
                 self.lastCPUSeconds = totals.cpuSeconds
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
@@ -284,6 +296,8 @@ final class ServiceController: Identifiable {
         statsTask?.cancel()
         statsTask = nil
         stats = nil
+        cpuHistory = []
+        latencyHistory = []
         lastCPUSeconds = nil
         logs.flushPartial()
         logs.ingest("[launcher] ── processo terminato (exit \(code)) ──\n")
