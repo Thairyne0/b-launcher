@@ -43,6 +43,13 @@ struct StoredService: Codable, Hashable {
     /// parta (avvio orchestrato a ondate). Richiede schema v2 quando usato — vedi
     /// `versionRequired`. Nomi sconosciuti/stantii vengono ignorati a runtime.
     var startAfter: [String]? = nil
+    /// URL dell'app servita (frontend web, o doc API di un backend): abilita il bottone
+    /// "apri nel browser" sulla card e l'apertura automatica a fine "Avvia stack".
+    /// Additivo; esportato nei template (localhost è portabile).
+    var appURL: String? = nil
+    /// `true` = app principale del progetto ("Avvia stack" la fa partire per ultima,
+    /// a stack pronto). Al più UNA per progetto — lo store la fa rispettare.
+    var isMainApp: Bool? = nil
 }
 
 struct StoredInfraCheck: Codable, Hashable {
@@ -273,7 +280,19 @@ final class ServiceStore {
             throw StoreError.duplicateServiceName(service.name)
         }
         projects[index].services.append(service)
+        enforceSingleMainApp(projectIndex: index, keeping: service.name)
         save()
+    }
+
+    /// Al più UNA app principale per progetto: se `keeping` è flaggata, sflagga le altre.
+    private func enforceSingleMainApp(projectIndex: Int, keeping serviceName: String) {
+        guard projects[projectIndex].services.first(where: {
+            $0.name.caseInsensitiveCompare(serviceName) == .orderedSame
+        })?.isMainApp == true else { return }
+        for index in projects[projectIndex].services.indices
+        where projects[projectIndex].services[index].name.caseInsensitiveCompare(serviceName) != .orderedSame {
+            projects[projectIndex].services[index].isMainApp = nil
+        }
     }
 
     /// Aggiorna (ed eventualmente rinomina) un servizio esistente. Se il nuovo nome
@@ -303,6 +322,7 @@ final class ServiceStore {
         }
         guard !collision else { throw StoreError.duplicateServiceName(service.name) }
         projects[projectIndex].services[serviceIndex] = service
+        enforceSingleMainApp(projectIndex: projectIndex, keeping: service.name)
         save()
     }
 
@@ -601,6 +621,8 @@ final class ServiceStore {
             config.envBadgeDisabled = service.envBadgeDisabled ?? false
             config.envFile = service.envFile
             config.startAfter = service.startAfter ?? []
+            config.appURL = service.appURL
+            config.isMainApp = service.isMainApp ?? false
             return config
         }
     }

@@ -292,6 +292,16 @@ struct ServiceCardView: View {
     private var controlButtons: some View {
         let status = controller.status
         HStack(spacing: 8) {
+            if let appURL = controller.config.appURL, let url = URL(string: appURL) {
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Image(systemName: "safari")
+                }
+                .padding(4)
+                .help("Apri \(appURL)")
+            }
+
             Button {
                 controller.start()
             } label: {

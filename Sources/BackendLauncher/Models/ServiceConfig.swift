@@ -48,6 +48,10 @@ struct ServiceConfig: Identifiable, Hashable {
     var envFile: String? = nil
     /// Nomi (brevi, stesso progetto) dei servizi da attendere prima dell'avvio.
     var startAfter: [String] = []
+    /// URL dell'app servita (vedi StoredService.appURL).
+    var appURL: String? = nil
+    /// App principale del progetto per "Avvia stack".
+    var isMainApp: Bool = false
 
     /// Namespaced su `projectName` quando presente ("Progetto/nome"), altrimenti il nome
     /// nudo — questo mantiene `id == name` per ogni config costruita senza `projectName`
