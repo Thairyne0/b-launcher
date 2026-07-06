@@ -331,10 +331,14 @@ struct ContentView: View {
             .ignoresSafeArea()
             // Tinta del progetto: sulla pagina di un progetto col colore accento
             // configurato, l'ambiente si tinge leggermente — "cambi stanza" quando
-            // cambi progetto. Radiale dall'alto per non appiattire il gradiente base.
+            // cambi progetto. Velo LINEARE full-width che sfuma nei primi ~40% dall'alto:
+            // una radiale creava un alone circolare al centro (bocciato alla prova visiva).
             if let accent = accentColor(for: currentSelection) {
-                RadialGradient(colors: [accent.opacity(colorScheme == .dark ? 0.16 : 0.12), .clear],
-                               center: .top, startRadius: 0, endRadius: 900)
+                LinearGradient(stops: [
+                    .init(color: accent.opacity(colorScheme == .dark ? 0.10 : 0.08), location: 0),
+                    .init(color: accent.opacity(colorScheme == .dark ? 0.04 : 0.03), location: 0.25),
+                    .init(color: .clear, location: 0.45),
+                ], startPoint: .top, endPoint: .bottom)
                     .ignoresSafeArea()
                     .transition(.opacity)
             }
