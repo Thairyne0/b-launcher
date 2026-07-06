@@ -238,6 +238,24 @@ struct ContentView: View {
     /// Titolo dinamico dell'alert infrastruttura, derivato da `model.infraCheck` invece che
     /// hardcoded su NATS/4222: il progetto scansionato/configurato può dichiarare un'altra
     /// spia (Redis, Postgres, ...), quindi titolo e messaggio devono seguirla.
+    /// Colore accento del progetto selezionato (pagina progetto o pannello di un suo
+    /// servizio), se configurato — pilota la tinta di sfondo.
+    private func accentColor(for selection: SidebarSelection) -> Color? {
+        let projectID: String? = {
+            switch selection {
+            case .project(let id): return id
+            case .service(let id):
+                return model.services.first { $0.id == id }?.config.projectName
+            default: return nil
+            }
+        }()
+        guard let projectID,
+              let hex = model.store?.projects.first(where: { $0.id == projectID })?.accentColorHex else {
+            return nil
+        }
+        return Color(hex: hex)
+    }
+
     /// Spia infra pertinente per la selezione corrente (vedi nota nella toolbar).
     private func infraEntry(for selection: SidebarSelection) -> (projectName: String, check: StoredInfraCheck)? {
         if case .project(let id) = selection,
@@ -311,6 +329,15 @@ struct ContentView: View {
                            : [Color(white: 0.94), Color(white: 0.86)],
                            startPoint: .top, endPoint: .bottom)
             .ignoresSafeArea()
+            // Tinta del progetto: sulla pagina di un progetto col colore accento
+            // configurato, l'ambiente si tinge leggermente — "cambi stanza" quando
+            // cambi progetto. Radiale dall'alto per non appiattire il gradiente base.
+            if let accent = accentColor(for: currentSelection) {
+                RadialGradient(colors: [accent.opacity(colorScheme == .dark ? 0.16 : 0.12), .clear],
+                               center: .top, startRadius: 0, endRadius: 900)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
         }
         .navigationTitle(navigationTitle(for: currentSelection))
         .toolbar {

@@ -436,7 +436,7 @@ struct SidebarView: View {
             .contentShape(Rectangle())
             .listRowBackground(
                 selection == .project(project.id)
-                    ? Color.accentColor.opacity(0.18)
+                    ? (project.accentColorHex.flatMap(Color.init(hex:)) ?? Color.accentColor).opacity(0.18)
                     : Color.clear
             )
             .onTapGesture {
