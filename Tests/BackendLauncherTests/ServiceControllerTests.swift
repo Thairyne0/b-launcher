@@ -120,6 +120,27 @@ private func fakeConfig(command: String) -> ServiceConfig {
         _ = await waitUntil { c.status == .stopped }
     }
 
+    @Test func markRunningObservedRecordsStartupDurationOnce() async throws {
+        let config = ServiceConfig(name: "fake", directory: "", command: "sleep 60",
+                                   readiness: .processAlive)
+        let c = ServiceController(config: config, cwd: "/tmp")
+        #expect(c.lastStartupDuration == nil)
+        c.start()
+        _ = await waitUntil { c.status == .running }
+
+        c.markRunningObserved()
+        let first = try #require(c.lastStartupDuration)
+        #expect(first >= 0 && first < 10)
+
+        // Seconda osservazione dello STESSO avvio: non riscrive la misura.
+        try await Task.sleep(for: .milliseconds(50))
+        c.markRunningObserved()
+        #expect(c.lastStartupDuration == first)
+
+        c.stop()
+        _ = await waitUntil { !c.processAlive }
+    }
+
     @Test func appendCappedKeepsOnlyMostRecentValues() {
         var values: [Double] = []
         for i in 0..<40 { ServiceController.appendCapped(Double(i), to: &values, cap: 30) }

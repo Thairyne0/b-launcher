@@ -50,6 +50,19 @@ final class ServiceController: Identifiable {
     var isCrashLooping: Bool { crashLoop.isLooping(at: Date()) }
     var recentCrashCount: Int { crashLoop.recentCrashCount(at: Date()) }
 
+    /// Durata dell'ultimo avvio riuscito (spawn → primo `.running` osservato): alimenta
+    /// l'anello di progresso sul pallino durante gli avvii successivi. Solo in memoria.
+    private(set) var lastStartupDuration: TimeInterval?
+    private var startupMeasured = false
+
+    /// Chiamato dal poll di AppModel quando osserva il servizio `.running`: misura la
+    /// durata dell'avvio corrente una volta sola (le osservazioni successive sono no-op).
+    func markRunningObserved() {
+        guard !startupMeasured, let startedAt else { return }
+        startupMeasured = true
+        lastStartupDuration = Date().timeIntervalSince(startedAt)
+    }
+
     /// Armato da un crash vero: quando il servizio torna `.running`, AppModel emette la
     /// notifica di recovery ("tornato verde") e lo disarma. Lo stop manuale disarma
     /// senza notifica (l'utente ha ripreso il controllo).
@@ -187,6 +200,7 @@ final class ServiceController: Identifiable {
         stopRequested = false
         lastExitCode = nil
         readyMarkerSeen = false
+        startupMeasured = false
         markerTail = ""
         logs.ingest("[launcher] ── avvio \(config.displayName) (\(config.command)) ──\n")
         fileWriter.appendBanner("avvio \(config.displayName) — \(Date().formatted())")

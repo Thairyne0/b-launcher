@@ -52,9 +52,14 @@ extension ServiceStatus {
     }
 }
 
-/// Pallino di stato, pulsante durante le transizioni.
+/// Pallino di stato, pulsante durante le transizioni. Durante `.starting`, se il
+/// chiamante passa `startedAt`, un anello attorno al pallino mostra il progresso
+/// rispetto alla durata dell'avvio precedente (`expectedDuration`) — o un arco che
+/// gira se non c'è ancora uno storico.
 struct StatusDot: View {
     let status: ServiceStatus
+    var startedAt: Date? = nil
+    var expectedDuration: TimeInterval? = nil
     @State private var pulse = false
 
     var body: some View {
@@ -69,9 +74,36 @@ struct StatusDot: View {
                        ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true)
                        : .default,
                        value: pulse)
+            .overlay { startupRing }
             .onAppear { pulse = status.isPulsing }
             .onChange(of: status.isPulsing) { _, pulsing in pulse = pulsing }
             .accessibilityLabel("Stato: \(status.label)")
+    }
+
+    @ViewBuilder
+    private var startupRing: some View {
+        if status == .starting, let startedAt {
+            TimelineView(.animation(minimumInterval: 1.0 / 20)) { context in
+                let elapsed = context.date.timeIntervalSince(startedAt)
+                if let expected = expectedDuration, expected > 0.5 {
+                    // Storico disponibile: anello che si riempie ("di solito ci mette Xs").
+                    Circle()
+                        .trim(from: 0, to: min(elapsed / expected, 1))
+                        .stroke(Color.yellow.opacity(0.9),
+                                style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 19, height: 19)
+                } else {
+                    // Nessuno storico: arco indeterminato che ruota.
+                    Circle()
+                        .trim(from: 0, to: 0.3)
+                        .stroke(Color.yellow.opacity(0.9),
+                                style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(elapsed * 240))
+                        .frame(width: 19, height: 19)
+                }
+            }
+        }
     }
 }
 

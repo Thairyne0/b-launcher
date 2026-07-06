@@ -607,6 +607,9 @@ final class AppModel {
                     self.reloadFromStore()
                 }
                 self.emitRecoveryNotices()
+                for service in self.services where service.processAlive && service.status == .running {
+                    service.markRunningObserved()
+                }
                 self.updateDockBadge()
                 // Controllo sync template: costa una lettura file per progetto tracciato, quindi
                 // gira ogni 10 tick (~20s coi valori di default) invece che a ogni giro di poll.

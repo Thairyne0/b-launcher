@@ -43,7 +43,9 @@ struct ServiceCardView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                StatusDot(status: controller.status)
+                StatusDot(status: controller.status,
+                          startedAt: controller.startedAt,
+                          expectedDuration: controller.lastStartupDuration)
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
