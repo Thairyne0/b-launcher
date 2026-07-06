@@ -190,6 +190,26 @@ disco (avvio disabilitato finché non torna disponibile).
   in toolbar segue il progetto selezionato) e il warning d'avvio usa la spia
   del progetto giusto.
 
+## Full-stack e frontend (v2)
+
+Il frontend è un servizio come gli altri: Next/Vite (`npm run dev`), Flutter
+(`flutter run`, riconosciuto dallo scanner via `pubspec.yaml`), Expo, Electron —
+qualsiasi comando.
+
+- **App principale + "Avvia stack"**: marca il frontend come "app principale"
+  nel form; sulla pagina del progetto il bottone prominente diventa **Avvia
+  stack**: backend a ondate (rispettando "parte dopo"), app per ultima a stack
+  pronto, poi browser sull'URL app (se web) e notifica "Stack pronto". App
+  native (Flutter/Electron): l'app compare da sé sul device/finestra.
+- **URL app**: campo opzionale per servizio → bottone "apri nel browser" sulla
+  card (vale anche per la doc API di un backend).
+- **Varianti di comando**: comandi alternativi one-shot per servizio
+  (es. `flutter run -d iphone` / `-d chrome`, o uno script di debug) nel menu
+  contestuale della card, "Avvia con…" — il comando di default resta invariato.
+- Nota Flutter: il terminale del launcher è una pipe senza stdin → niente hot
+  reload interattivo da qui; il ciclo di sviluppo resta nell'IDE. Il valore è
+  lo stack: un click e tutti i backend sono su e verdi.
+
 - **Badge ".env mancante"**: se la cartella del servizio esiste ma non contiene
   `.env` (tipico backend appena clonato), la card mostra un badge cliccabile —
   e la sidebar un'icona 🔑 accanto al backend — che apre uno sheet: incolli il

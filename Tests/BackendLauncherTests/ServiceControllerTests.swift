@@ -120,6 +120,21 @@ private func fakeConfig(command: String) -> ServiceConfig {
         _ = await waitUntil { c.status == .stopped }
     }
 
+    @Test func startWithCommandOverrideRunsVariantOnce() async throws {
+        // L'override vale per QUELLO spawn: il comando di default resta in config.
+        let config = ServiceConfig(name: "fake", directory: "", command: "echo default && sleep 60",
+                                   readiness: .processAlive)
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.start(commandOverride: "echo variante-attiva && sleep 60")
+        let seen = await waitUntil {
+            c.logs.lines.contains { $0.text.contains("variante-attiva") }
+        }
+        #expect(seen)
+        #expect(c.config.command == "echo default && sleep 60")
+        c.stop()
+        _ = await waitUntil { !c.processAlive }
+    }
+
     @Test func markRunningObservedRecordsStartupDurationOnce() async throws {
         let config = ServiceConfig(name: "fake", directory: "", command: "sleep 60",
                                    readiness: .processAlive)

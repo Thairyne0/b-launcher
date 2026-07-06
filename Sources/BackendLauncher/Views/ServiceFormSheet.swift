@@ -71,6 +71,7 @@ struct ServiceFormSheet: View {
     @State private var startAfter: Set<String> = []
     @State private var appURLText: String = ""
     @State private var isMainApp = false
+    @State private var variantsText: String = ""
     @State private var saveError: String?
     /// Evita di mostrare "il nome non può essere vuoto" prima ancora che l'utente abbia
     /// interagito col form (fastidioso in modalità "add" a sheet appena aperta).
@@ -192,6 +193,13 @@ struct ServiceFormSheet: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
+                TextField("Varianti (opzionali, separate da «;») — es. flutter run -d iphone; flutter run -d chrome",
+                          text: $variantsText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout)
+                Text("Le varianti compaiono nel menu contestuale della card (\"Avvia con…\") e valgono per il singolo avvio.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -410,6 +418,14 @@ struct ServiceFormSheet: View {
         startAfter = Set(service.startAfter ?? [])
         appURLText = service.appURL ?? ""
         isMainApp = service.isMainApp ?? false
+        variantsText = (service.commandVariants ?? []).joined(separator: "; ")
+    }
+
+    /// Varianti dal campo testo: separate da ";", trim, vuote scartate.
+    private var parsedVariants: [String] {
+        variantsText.split(separator: ";")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     /// Picker per il file env alternativo (file nascosti visibili: .env.* iniziano col punto).
@@ -452,7 +468,8 @@ struct ServiceFormSheet: View {
                                     appURL: appURLText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                         ? nil
                                         : appURLText.trimmingCharacters(in: .whitespacesAndNewlines),
-                                    isMainApp: isMainApp ? true : nil)
+                                    isMainApp: isMainApp ? true : nil,
+                                    commandVariants: parsedVariants.isEmpty ? nil : parsedVariants)
         do {
             switch mode {
             case .add:

@@ -535,6 +535,30 @@ import Testing
         #expect(ProjectScanner.scan(root: root).services.isEmpty)
     }
 
+    // MARK: - Flutter
+
+    @Test func flutterPubspecDetected() throws {
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("mobile-app")
+        try write("name: mobile_app\ndescription: demo\n", to: dir.appendingPathComponent("pubspec.yaml"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "flutter run")
+        #expect(service.sourceHint == "pubspec.yaml (Flutter)")
+        #expect(service.readiness == StoredReadiness(kind: .processAlive, port: nil, marker: nil))
+    }
+
+    @Test func packageJsonTakesPrecedenceOverFlutter() throws {
+        // Progetto ibrido (raro ma esiste): package.json con script vince.
+        let root = try tempRoot()
+        let dir = root.appendingPathComponent("hybrid-app")
+        try write("{ \"scripts\": { \"dev\": \"vite\" } }", to: dir.appendingPathComponent("package.json"))
+        try write("name: hybrid\n", to: dir.appendingPathComponent("pubspec.yaml"))
+
+        let service = try #require(ProjectScanner.scan(root: root).services.first)
+        #expect(service.command == "npm run dev")
+    }
+
     // MARK: - docker-compose (servizi)
 
     @Test func composeServicesDetectedInfraExcluded() throws {

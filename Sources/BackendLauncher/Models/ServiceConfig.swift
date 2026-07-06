@@ -52,6 +52,8 @@ struct ServiceConfig: Identifiable, Hashable {
     var appURL: String? = nil
     /// App principale del progetto per "Avvia stack".
     var isMainApp: Bool = false
+    /// Comandi alternativi one-shot (menu "Avvia con…" sulla card).
+    var commandVariants: [String] = []
 
     /// Namespaced su `projectName` quando presente ("Progetto/nome"), altrimenti il nome
     /// nudo — questo mantiene `id == name` per ogni config costruita senza `projectName`

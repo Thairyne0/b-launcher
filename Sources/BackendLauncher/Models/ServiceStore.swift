@@ -50,6 +50,10 @@ struct StoredService: Codable, Hashable {
     /// `true` = app principale del progetto ("Avvia stack" la fa partire per ultima,
     /// a stack pronto). Al più UNA per progetto — lo store la fa rispettare.
     var isMainApp: Bool? = nil
+    /// Comandi alternativi one-shot (es. `flutter run -d iphone` / `-d chrome`, o uno
+    /// script di debug): menu "Avvia con…" sulla card. Il comando di default resta
+    /// invariato. Additivo; esportato nei template.
+    var commandVariants: [String]? = nil
 }
 
 struct StoredInfraCheck: Codable, Hashable {
@@ -623,6 +627,7 @@ final class ServiceStore {
             config.startAfter = service.startAfter ?? []
             config.appURL = service.appURL
             config.isMainApp = service.isMainApp ?? false
+            config.commandVariants = service.commandVariants ?? []
             return config
         }
     }

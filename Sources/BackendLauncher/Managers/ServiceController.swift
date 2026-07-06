@@ -191,18 +191,21 @@ final class ServiceController: Identifiable {
         return leadingEnvAssignmentPattern.firstMatch(in: command, range: range) != nil
     }
 
-    func start() {
+    /// `commandOverride`: variante one-shot ("Avvia con…") — vale per QUESTO spawn,
+    /// il comando di default in config resta invariato.
+    func start(commandOverride: String? = nil) {
         guard !processAlive else { return }
         guard status != .external else {
             logs.ingest("[launcher] porta \(config.port.map(String.init) ?? "?") già occupata da un processo esterno — avvio rifiutato\n")
             return
         }
+        let command = commandOverride ?? config.command
         stopRequested = false
         lastExitCode = nil
         readyMarkerSeen = false
         startupMeasured = false
         markerTail = ""
-        logs.ingest("[launcher] ── avvio \(config.displayName) (\(config.command)) ──\n")
+        logs.ingest("[launcher] ── avvio \(config.displayName) (\(command)) ──\n")
         fileWriter.appendBanner("avvio \(config.displayName) — \(Date().formatted())")
         epoch += 1
         let myEpoch = epoch
@@ -220,7 +223,7 @@ final class ServiceController: Identifiable {
         do {
             let cwd = cwdOverride ?? config.workingDirectory.path
             process = try SpawnedProcess(
-                shellCommand: Self.wrappedShellCommand(for: config.command),
+                shellCommand: Self.wrappedShellCommand(for: command),
                 cwd: cwd,
                 extraEnvironment: extraEnvironment,
                 onChunk: { [weak self] chunk in

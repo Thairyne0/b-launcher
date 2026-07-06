@@ -234,6 +234,17 @@ struct ServiceCardView: View {
             }
         }
         .contextMenu {
+            if !controller.config.commandVariants.isEmpty {
+                Menu("Avvia con…") {
+                    ForEach(controller.config.commandVariants, id: \.self) { variant in
+                        Button(variant) {
+                            controller.start(commandOverride: variant)
+                        }
+                        .disabled(controller.processAlive)
+                    }
+                }
+                Divider()
+            }
             Button("Apri directory nel Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([controller.config.workingDirectory])
             }

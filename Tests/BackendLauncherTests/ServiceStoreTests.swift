@@ -110,6 +110,22 @@ import Testing
         #expect(reloaded.projects == store.projects)
     }
 
+    @Test func commandVariantsPersistAndBridge() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        try store.addProject(named: "P")
+        try store.addService(StoredService(
+            name: "mobile", directory: "/tmp/m", command: "flutter run",
+            readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+            commandVariants: ["flutter run -d macos", "flutter run -d chrome"]), toProject: "P")
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.services.first?.commandVariants
+                == ["flutter run -d macos", "flutter run -d chrome"])
+        let config = try #require(reloaded.serviceConfigs(for: reloaded.projects[0]).first)
+        #expect(config.commandVariants == ["flutter run -d macos", "flutter run -d chrome"])
+    }
+
     @Test func appURLAndMainAppPersistAndBridge() throws {
         let url = tempStoreURL()
         let store = ServiceStore(fileURL: url)

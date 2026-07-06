@@ -24,6 +24,7 @@ struct ProjectTemplate: Codable {
         /// Additivi v2-frontend: URL app (localhost, portabile) e flag app principale.
         var appURL: String? = nil
         var isMainApp: Bool? = nil
+        var commandVariants: [String]? = nil
     }
 }
 
@@ -74,7 +75,8 @@ enum ProjectTemplateCodec {
                 envBadgeDisabled: service.envBadgeDisabled,
                 startAfter: service.startAfter,
                 appURL: service.appURL,
-                isMainApp: service.isMainApp
+                isMainApp: service.isMainApp,
+                commandVariants: service.commandVariants
             )
         }
         return ProjectTemplate(
@@ -107,7 +109,8 @@ enum ProjectTemplateCodec {
                 envBadgeDisabled: templateService.envBadgeDisabled,
                 startAfter: templateService.startAfter,
                 appURL: templateService.appURL,
-                isMainApp: templateService.isMainApp
+                isMainApp: templateService.isMainApp,
+                commandVariants: templateService.commandVariants
             )
         }
         let name = nameOverride?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
