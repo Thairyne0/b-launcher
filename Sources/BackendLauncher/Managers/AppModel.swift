@@ -496,6 +496,22 @@ final class AppModel {
         }
     }
 
+    /// Notifica "tornato verde" per i servizi crashati che sono tornati `.running`.
+    /// Chiamato dal poll a ogni tick; ritorna gli id notificati (testabilità).
+    @discardableResult
+    func emitRecoveryNotices() -> [String] {
+        var notified: [String] = []
+        for service in services where service.awaitingRecoveryNotice && service.status == .running {
+            service.clearRecoveryNotice()
+            notified.append(service.id)
+            if crashNotificationsEnabled {
+                CrashNotifier.notifyRecovery(service: service.config.displayName,
+                                             serviceID: service.id)
+            }
+        }
+        return notified
+    }
+
     /// Aggiorna `infraUp`/`natsUp` da un esito di probe porte. Estratto dal poll per
     /// poterlo pilotare nei test (`refreshInfraStatus`).
     private func applyInfraResults(_ results: [UInt16: Bool]) {
@@ -587,6 +603,7 @@ final class AppModel {
                 }) {
                     self.reloadFromStore()
                 }
+                self.emitRecoveryNotices()
                 self.updateDockBadge()
                 // Controllo sync template: costa una lettura file per progetto tracciato, quindi
                 // gira ogni 10 tick (~20s coi valori di default) invece che a ogni giro di poll.

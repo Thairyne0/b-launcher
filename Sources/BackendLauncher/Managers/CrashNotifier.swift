@@ -40,6 +40,19 @@ enum CrashNotifier {
                                             content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
+
+    /// Notifica di RECOVERY: un servizio che era crashato è tornato pronto (verde).
+    /// Chiude il cerchio della notifica di crash — stesso gate delle impostazioni.
+    static func notifyRecovery(service: String, serviceID: String) {
+        guard isAvailable, AppSettings.crashNotificationsEnabled else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "\(service) è tornato verde"
+        content.body = "Di nuovo in esecuzione e pronto."
+        content.userInfo = ["service": serviceID]
+        let request = UNNotificationRequest(identifier: UUID().uuidString,
+                                            content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
 }
 
 /// Riceve gli eventi dello UNUserNotificationCenter: tap (deep-link) e presentazione

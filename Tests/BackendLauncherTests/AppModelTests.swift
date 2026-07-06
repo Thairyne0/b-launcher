@@ -228,6 +228,57 @@ import Testing
         #expect(zip(errors, errors.dropFirst()).allSatisfy { $0.line.receivedAt >= $1.line.receivedAt })
     }
 
+    @Test func recoveryNoticeEmittedWhenCrashedServiceComesBack() async throws {
+        // Comando condizionato da un file-flag: prima run crasha (exit 9), dopo la
+        // "riparazione" (file creato) resta vivo → running (readiness processAlive).
+        let flag = FileManager.default.temporaryDirectory
+            .appendingPathComponent("blauncher-recovery-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: flag) }
+        let config = ServiceConfig(name: "flaky", directory: "",
+                                   command: "[ -f '\(flag.path)' ] && sleep 60 || exit 9",
+                                   readiness: .processAlive)
+        let model = AppModel(configs: [config], cwd: "/tmp", pollingEnabled: false,
+                             crashNotificationsEnabled: false)
+        let service = try #require(model.services.first)
+
+        service.start()
+        _ = await waitUntil { service.status == .crashed(exitCode: 9) }
+        #expect(service.awaitingRecoveryNotice)
+        #expect(model.emitRecoveryNotices().isEmpty)  // non ancora running: niente notifica
+
+        try Data().write(to: flag)  // "riparato"
+        service.start()
+        _ = await waitUntil { service.status == .running }
+
+        #expect(model.emitRecoveryNotices() == [service.id])
+        #expect(service.awaitingRecoveryNotice == false)
+        #expect(model.emitRecoveryNotices().isEmpty)  // una volta sola
+
+        service.stop()
+        _ = await waitUntil { !service.processAlive }
+    }
+
+    @Test func manualStopDisarmsRecoveryNotice() async throws {
+        let config = ServiceConfig(name: "crasher", directory: "", command: "sleep 60",
+                                   readiness: .processAlive)
+        let model = AppModel(configs: [config], cwd: "/tmp", pollingEnabled: false,
+                             crashNotificationsEnabled: false)
+        let service = try #require(model.services.first)
+        service.start()
+        _ = await waitUntil { service.processAlive }
+        // Uccisione esterna = crash vero → flag armato.
+        if let pid = service.processID { kill(pid, SIGKILL) }
+        _ = await waitUntil { !service.processAlive }
+        #expect(service.awaitingRecoveryNotice)
+
+        service.start()
+        _ = await waitUntil { service.processAlive }
+        service.stop()  // stop manuale PRIMA che scatti la notifica: disarma
+        _ = await waitUntil { !service.processAlive }
+        #expect(service.awaitingRecoveryNotice == false)
+        #expect(model.emitRecoveryNotices().isEmpty)
+    }
+
     @Test func globalErrorGroupsCollapseIdenticalErrorsPerService() {
         let model = AppModel(configs: fakeConfigs, cwd: "/tmp", pollingEnabled: false)
         model.services[0].logs.ingest("""

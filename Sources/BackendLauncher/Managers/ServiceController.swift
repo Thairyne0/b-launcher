@@ -40,6 +40,15 @@ final class ServiceController: Identifiable {
     var isCrashLooping: Bool { crashLoop.isLooping(at: Date()) }
     var recentCrashCount: Int { crashLoop.recentCrashCount(at: Date()) }
 
+    /// Armato da un crash vero: quando il servizio torna `.running`, AppModel emette la
+    /// notifica di recovery ("tornato verde") e lo disarma. Lo stop manuale disarma
+    /// senza notifica (l'utente ha ripreso il controllo).
+    private(set) var awaitingRecoveryNotice = false
+
+    func clearRecoveryNotice() {
+        awaitingRecoveryNotice = false
+    }
+
     private var process: SpawnedProcess?
     private var stopRequested = false
     private var lastExitCode: Int32?
@@ -242,8 +251,10 @@ final class ServiceController: Identifiable {
 
     func stop() {
         guard processAlive, let process else { return }
-        // Stop manuale = l'utente ha ripreso il controllo: il conteggio crash riparte.
+        // Stop manuale = l'utente ha ripreso il controllo: il conteggio crash riparte
+        // e la notifica di recovery in attesa non ha più senso.
         crashLoop.reset()
+        awaitingRecoveryNotice = false
         stopRequested = true
         logs.ingest("[launcher] ── stop richiesto ──\n")
         process.terminate(gracePeriod: AppSettings.killGracePeriodSeconds)
@@ -279,6 +290,7 @@ final class ServiceController: Identifiable {
         fileWriter.appendBanner("processo terminato (exit \(code))")
         if isCrash {
             crashLoop.recordCrash(at: Date())
+            awaitingRecoveryNotice = true
             onCrash?(config.displayName, code)
         }
         if pendingRestart {
