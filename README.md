@@ -137,6 +137,10 @@ cartella…", un file `.json` precarica l'import.
 
 Ogni servizio ha un pannello di log (terminale) con:
 
+- **Colori ANSI veri**: il launcher chiede ai logger di emettere i colori anche
+  su pipe (`FORCE_COLOR`/`CLICOLOR_FORCE`) e renderizza gli escape SGR (16
+  colori + bold) — i log NestJS/npm/uvicorn appaiono colorati come in un
+  terminale vero. Copia e ricerca lavorano sul testo pulito.
 - **Colori per livello**: normale, debug, warning, errore, classificati riga per
   riga dall'output.
 - **Filtro**: Tutti / Warn+ / Errori (segmented control).

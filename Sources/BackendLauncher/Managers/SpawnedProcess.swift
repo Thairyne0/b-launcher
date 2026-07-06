@@ -198,6 +198,15 @@ final class SpawnedProcess {
         if !seenKeys.contains("PYTHONUNBUFFERED") {
             result.append("PYTHONUNBUFFERED=1")
         }
+        // stdout è una pipe (mai una TTY): chalk/Nest/pino spengono i colori da soli.
+        // Il terminale del launcher ora RENDERIZZA gli escape SGR (ANSIParser), quindi
+        // chiediamo ai logger di emetterli comunque — salvo scelta esplicita dell'utente.
+        if !seenKeys.contains("FORCE_COLOR") {
+            result.append("FORCE_COLOR=1")
+        }
+        if !seenKeys.contains("CLICOLOR_FORCE") {
+            result.append("CLICOLOR_FORCE=1")
+        }
         return result
     }
 }

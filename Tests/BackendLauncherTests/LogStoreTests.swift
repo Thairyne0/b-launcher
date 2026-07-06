@@ -22,6 +22,27 @@ import Testing
         let store = LogStore()
         store.ingest("\u{1B}[32m[Nest] ready\u{1B}[0m\n")
         #expect(store.lines.map(\.text) == ["[Nest] ready"])
+        // …ma il colore sopravvive come span (verde = indice 2) per il rendering.
+        #expect(store.lines.first?.ansiSpans ==
+                [ANSISpan(start: 0, length: 12, colorIndex: 2, bold: false)])
+    }
+
+    @Test func ansiEscapeSplitAcrossChunksIsRecomposed() {
+        // La sequenza "\u{1B}[31m" arriva spezzata tra due chunk della pipe: il buffering
+        // per riga la ricompone e il parse produce testo pulito + span corretto.
+        let store = LogStore()
+        store.ingest("\u{1B}[3")
+        store.ingest("1mERRORE\u{1B}[0m\n")
+        #expect(store.lines.map(\.text) == ["ERRORE"])
+        #expect(store.lines.first?.ansiSpans ==
+                [ANSISpan(start: 0, length: 6, colorIndex: 1, bold: false)])
+    }
+
+    @Test func classificationWorksOnCleanTextDespiteColors() {
+        let store = LogStore()
+        store.ingest("\u{1B}[31m10:00 ERROR esplosione\u{1B}[0m\n")
+        #expect(store.lines.first?.level == .error)
+        #expect(store.errorCount == 1)
     }
 
     @Test func stripsOSCTitleSequenceTerminatedByBEL() {

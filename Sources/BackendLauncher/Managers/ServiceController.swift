@@ -226,7 +226,9 @@ final class ServiceController: Identifiable {
                 onChunk: { [weak self] chunk in
                     guard let self, self.epoch == myEpoch else { return }
                     if case .logMarker(let marker) = self.config.readiness, !self.readyMarkerSeen {
-                        let haystack = self.markerTail + chunk
+                        // Match sul testo PULITO: con FORCE_COLOR la riga del marker arriva
+                        // colorata e gli escape non devono spezzare la frase cercata.
+                        let haystack = self.markerTail + ANSIParser.parse(chunk).clean
                         if haystack.localizedCaseInsensitiveContains(marker) {
                             self.readyMarkerSeen = true
                         }

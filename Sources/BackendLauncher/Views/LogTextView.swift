@@ -80,6 +80,28 @@ struct LogTextView: NSViewRepresentable {
 
         private var paragraphStyle = LogTextView.Coordinator.makeParagraphStyle(fontSize: 12)
         private var font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        private var boldFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+
+        /// Palette ANSI a 16 colori, tarata sullo sfondo scuro del terminale (i "dark"
+        /// puri come il blu 0000AA sarebbero illeggibili: versioni schiarite).
+        static let ansiPalette: [NSColor] = [
+            NSColor(white: 0.35, alpha: 1),                            // 0 nero → grigio
+            NSColor(red: 0.96, green: 0.46, blue: 0.46, alpha: 1),     // 1 rosso
+            NSColor(red: 0.55, green: 0.86, blue: 0.49, alpha: 1),     // 2 verde
+            NSColor(red: 0.98, green: 0.83, blue: 0.42, alpha: 1),     // 3 giallo
+            NSColor(red: 0.49, green: 0.68, blue: 1.0, alpha: 1),      // 4 blu
+            NSColor(red: 0.87, green: 0.58, blue: 0.98, alpha: 1),     // 5 magenta
+            NSColor(red: 0.44, green: 0.86, blue: 0.90, alpha: 1),     // 6 ciano
+            NSColor(white: 0.88, alpha: 1),                            // 7 bianco
+            NSColor(white: 0.55, alpha: 1),                            // 8 grigio brillante
+            NSColor(red: 1.0, green: 0.55, blue: 0.55, alpha: 1),      // 9 rosso brillante
+            NSColor(red: 0.62, green: 0.94, blue: 0.55, alpha: 1),     // 10 verde brillante
+            NSColor(red: 1.0, green: 0.90, blue: 0.50, alpha: 1),      // 11 giallo brillante
+            NSColor(red: 0.58, green: 0.76, blue: 1.0, alpha: 1),      // 12 blu brillante
+            NSColor(red: 0.93, green: 0.67, blue: 1.0, alpha: 1),      // 13 magenta brillante
+            NSColor(red: 0.55, green: 0.93, blue: 0.96, alpha: 1),     // 14 ciano brillante
+            NSColor(white: 0.98, alpha: 1),                            // 15 bianco brillante
+        ]
 
         private static func makeParagraphStyle(fontSize: Double) -> NSParagraphStyle {
             let style = NSMutableParagraphStyle()
@@ -105,6 +127,7 @@ struct LogTextView: NSViewRepresentable {
 
             if fontSizeChanged {
                 font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+                boldFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
                 paragraphStyle = Self.makeParagraphStyle(fontSize: fontSize)
             }
 
@@ -170,6 +193,22 @@ struct LogTextView: NSViewRepresentable {
             attr.addAttribute(.font, value: font, range: full)
             attr.addAttribute(.paragraphStyle, value: paragraphStyle, range: full)
             attr.addAttribute(.foregroundColor, value: color(for: line.level), range: full)
+
+            // Colori ANSI del backend: vincono sul colore di livello (sono la scelta
+            // esplicita del logger, es. Nest colora già gli ERROR di rosso). L'evidenza
+            // di ricerca sotto vince su tutto.
+            for span in line.ansiSpans {
+                let location = min(span.start, attr.length)
+                let length = min(span.length, attr.length - location)
+                guard length > 0 else { continue }
+                let range = NSRange(location: location, length: length)
+                if let colorIndex = span.colorIndex {
+                    attr.addAttribute(.foregroundColor, value: Self.ansiPalette[colorIndex], range: range)
+                }
+                if span.bold {
+                    attr.addAttribute(.font, value: boldFont, range: range)
+                }
+            }
 
             if !searchText.isEmpty {
                 let lowerText = text.lowercased()
