@@ -170,7 +170,10 @@ disco (avvio disabilitato finché non torna disponibile).
 
 - **Pannello Errori**: voce "Errori" in sidebar (badge col totale) con le righe
   di errore di tutti i backend in un'unica lista ordinata per tempo — per il
-  debugging a cascata; click su una riga → terminale del servizio.
+  debugging a cascata; click su una riga → terminale del servizio. Gli errori
+  identici dello stesso backend (stesso messaggio dal marker ERROR/FATAL in
+  poi, così pid/timestamp nel testo non contano) sono raggruppati in una riga
+  con "×N" e il timestamp dell'occorrenza più recente.
 - **Ordine di avvio**: per ogni backend puoi dichiarare "parte dopo" altri
   backend del progetto; l'avvio di progetto/profili procede a ondate,
   attendendo che l'ondata precedente sia verde (timeout 90 s a ondata, poi si

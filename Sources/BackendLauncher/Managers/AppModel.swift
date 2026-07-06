@@ -239,6 +239,61 @@ final class AppModel {
         return Array(entries.prefix(500))
     }
 
+    /// Gruppo di errori IDENTICI (stesso servizio + stesso testo) per il pannello errori:
+    /// una riga sola con conteggio, timestamp dell'occorrenza più recente.
+    struct GlobalErrorGroup: Identifiable {
+        let serviceID: String
+        let serviceName: String
+        let text: String
+        let count: Int
+        let lastReceivedAt: Date
+        var id: String { "\(serviceID)#\(text.hashValue)" }
+    }
+
+    /// Chiave di raggruppamento di una riga di errore: dal marker di livello in poi.
+    /// I log reali hanno pid/timestamp PRIMA del marker ("[Nest] 123 - 10:00:01 ERROR …"):
+    /// l'exact-match non raggrupperebbe mai due occorrenze dello stesso errore. Dal marker
+    /// in avanti restano contesto e messaggio, che sono ciò che rende "uguale" un errore.
+    static func errorGroupingKey(for text: String) -> String {
+        for marker in ["ERROR", "FATAL"] {
+            if let range = text.range(of: marker) {
+                return String(text[range.lowerBound...])
+            }
+        }
+        return text
+    }
+
+    /// `globalErrors` raggruppati: l'errore ripetuto (es. ECONNREFUSED in loop) diventa
+    /// una riga con "×N" invece di N righe che seppelliscono il resto. Il testo mostrato
+    /// è quello dell'occorrenza più recente.
+    var globalErrorGroups: [GlobalErrorGroup] {
+        var order: [String] = []
+        var byKey: [String: (entry: GlobalErrorEntry, count: Int, last: Date)] = [:]
+        for entry in globalErrors {
+            let key = "\(entry.serviceID)#\(Self.errorGroupingKey(for: entry.line.text))"
+            if var existing = byKey[key] {
+                existing.count += 1
+                if entry.line.receivedAt >= existing.last {
+                    existing.last = entry.line.receivedAt
+                    existing.entry = entry
+                }
+                byKey[key] = existing
+            } else {
+                order.append(key)
+                byKey[key] = (entry, 1, entry.line.receivedAt)
+            }
+        }
+        return order.compactMap { key -> GlobalErrorGroup? in
+            guard let value = byKey[key] else { return nil }
+            return GlobalErrorGroup(serviceID: value.entry.serviceID,
+                                    serviceName: value.entry.serviceName,
+                                    text: value.entry.line.text,
+                                    count: value.count,
+                                    lastReceivedAt: value.last)
+        }
+        .sorted { $0.lastReceivedAt > $1.lastReceivedAt }
+    }
+
     /// Servizi raggruppati per progetto, preservando l'ordine di prima apparizione del
     /// `projectName` in `services` (che rispecchia l'ordine dei progetti nello store).
     /// Usato dalla menu bar per offrire avvia/ferma per singolo progetto.

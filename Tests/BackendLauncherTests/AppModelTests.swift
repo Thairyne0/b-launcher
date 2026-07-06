@@ -228,6 +228,29 @@ import Testing
         #expect(zip(errors, errors.dropFirst()).allSatisfy { $0.line.receivedAt >= $1.line.receivedAt })
     }
 
+    @Test func globalErrorGroupsCollapseIdenticalErrorsPerService() {
+        let model = AppModel(configs: fakeConfigs, cwd: "/tmp", pollingEnabled: false)
+        model.services[0].logs.ingest("""
+        10:00 ERROR connessione rifiutata
+        10:01 ERROR connessione rifiutata
+        10:02 ERROR altro problema
+        10:03 ERROR connessione rifiutata
+        """ + "\n")
+        // Stesso testo su un ALTRO servizio: gruppo separato (il servizio conta).
+        model.services[1].logs.ingest("10:04 ERROR connessione rifiutata\n")
+
+        let groups = model.globalErrorGroups
+
+        #expect(groups.count == 3)
+        let ripetuto = groups.first { $0.serviceName == "a" && $0.text.contains("rifiutata") }
+        #expect(ripetuto?.count == 3)
+        let singolo = groups.first { $0.serviceName == "a" && $0.text.contains("altro") }
+        #expect(singolo?.count == 1)
+        #expect(groups.first { $0.serviceName == "b" }?.count == 1)
+        // Ordinati per occorrenza più recente.
+        #expect(zip(groups, groups.dropFirst()).allSatisfy { $0.lastReceivedAt >= $1.lastReceivedAt })
+    }
+
     @Test func infraStatusTrackedPerProject() async throws {
         // Due progetti con spie infra su porte diverse: una in ascolto, l'altra no.
         let listener = makeTCPListener()

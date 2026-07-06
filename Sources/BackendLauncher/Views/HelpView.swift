@@ -96,7 +96,7 @@ enum HelpContent {
                 .bullets([
                     "Griglia — tutti i servizi.",
                     "Focus — terminali affiancati, selezionabili tramite chip.",
-                    "Errori — le righe di errore di TUTTI i backend in un'unica lista ordinata per tempo (badge col totale in sidebar); click su una riga per aprire il terminale del servizio.",
+                    "Errori — le righe di errore di TUTTI i backend in un'unica lista ordinata per tempo (badge col totale in sidebar); gli errori identici dello stesso backend sono raggruppati in una riga sola con \"×N\" (ignorando pid/timestamp nel testo); click su una riga per aprire il terminale del servizio.",
                     "Vista singolo servizio — click sul servizio in sidebar."
                 ]),
                 .subheading("Card servizio"),

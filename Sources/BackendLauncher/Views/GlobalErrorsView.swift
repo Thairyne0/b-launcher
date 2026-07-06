@@ -9,17 +9,17 @@ struct GlobalErrorsView: View {
     var onOpenService: (String) -> Void
 
     var body: some View {
-        let errors = model.globalErrors
+        let groups = model.globalErrorGroups
         Group {
-            if errors.isEmpty {
+            if groups.isEmpty {
                 ContentUnavailableView("Nessun errore",
                                        systemImage: "checkmark.circle",
-                                       description: Text("Le righe di errore di tutti i backend compariranno qui, ordinate per tempo."))
+                                       description: Text("Le righe di errore di tutti i backend compariranno qui, ordinate per tempo. Gli errori identici vengono raggruppati."))
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(errors) { entry in
-                            errorRow(entry)
+                        ForEach(groups) { group in
+                            errorRow(group)
                         }
                     }
                     .padding(16)
@@ -28,21 +28,32 @@ struct GlobalErrorsView: View {
         }
     }
 
-    private func errorRow(_ entry: AppModel.GlobalErrorEntry) -> some View {
+    private func errorRow(_ group: AppModel.GlobalErrorGroup) -> some View {
         Button {
-            onOpenService(entry.serviceID)
+            onOpenService(group.serviceID)
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(entry.line.receivedAt, format: .dateTime.hour().minute().second())
+                Text(group.lastReceivedAt, format: .dateTime.hour().minute().second())
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
-                Text(entry.serviceName)
+                Text(group.serviceName)
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 1)
                     .background(Color.red.opacity(0.18), in: .capsule)
                     .foregroundStyle(.red)
-                Text(entry.line.text)
+                if group.count > 1 {
+                    Text("×\(group.count)")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.2), in: .capsule)
+                        .foregroundStyle(.orange)
+                        .help("\(group.count) occorrenze identiche — mostrata la più recente")
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: group.count)
+                }
+                Text(group.text)
                     .font(.caption.monospaced())
                     .lineLimit(2)
                     .truncationMode(.tail)
@@ -55,6 +66,6 @@ struct GlobalErrorsView: View {
         }
         .buttonStyle(.plain)
         .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: 8))
-        .help("Apri il terminale di \(entry.serviceName)")
+        .help("Apri il terminale di \(group.serviceName)")
     }
 }
