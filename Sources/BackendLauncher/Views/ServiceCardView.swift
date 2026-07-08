@@ -206,7 +206,7 @@ struct ServiceCardView: View {
             }
 
             if showTerminal {
-                TerminalView(logs: controller.logs)
+                TerminalView(logs: controller.logs, controller: controller)
                     .frame(height: 400)
                     .padding([.horizontal, .bottom], 16)
             }

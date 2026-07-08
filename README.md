@@ -137,6 +137,11 @@ cartella…", un file `.json` precarica l'import.
 
 Ogni servizio ha un pannello di log (terminale) con:
 
+- **Terminale interattivo**: sotto il terminale di un servizio in esecuzione una
+  barra di input manda righe allo **stdin** del processo (↑/↓ storico comandi);
+  ciò che invii compare come «❯ …» nei log. Funziona coi programmi che leggono
+  righe da stdin (prompt, alcuni dev-server); NestJS & co. lo ignorano. Terminale
+  reale con tasti raw / hot-reload (PTY) previsto per una versione futura.
 - **Colori ANSI veri**: il launcher chiede ai logger di emettere i colori anche
   su pipe (`FORCE_COLOR`/`CLICOLOR_FORCE`) e renderizza gli escape SGR (16
   colori + bold) — i log NestJS/npm/uvicorn appaiono colorati come in un

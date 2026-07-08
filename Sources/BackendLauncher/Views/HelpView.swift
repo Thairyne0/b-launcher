@@ -125,6 +125,7 @@ enum HelpContent {
                     "Pulisci per svuotare il terminale.",
                     "Autoscroll intelligente: non ti interrompe se stai scorrendo verso l'alto per rileggere."
                 ]),
+                .paragraph("Terminale interattivo: sotto il terminale di un servizio in esecuzione c'è una barra di input — scrivi una riga e premi Invio per mandarla allo stdin del processo (↑/↓ per lo storico comandi). Utile per rispondere a prompt o comandi di alcuni dev-server; i backend che non leggono lo stdin (es. NestJS) la ignorano. Ciò che invii compare come «❯ …» nei log."),
                 .paragraph("I log vengono salvati anche su file in ~/Library/Logs/BackendLauncher (rotazione a 5 MB). Tasto destro sul servizio → \"Apri log nel Finder\" per trovarli.")
             ]
         ),

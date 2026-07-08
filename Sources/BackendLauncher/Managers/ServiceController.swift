@@ -72,6 +72,21 @@ final class ServiceController: Identifiable {
         awaitingRecoveryNotice = false
     }
 
+    /// Storico dei comandi inviati allo stdin (terminale interattivo), per la navigazione
+    /// ↑/↓ della barra di input. Solo in memoria, cap 100.
+    private(set) var inputHistory: [String] = []
+
+    /// Invia una riga allo stdin del processo (+ `\n`) e la ecoa nel log come «❯ …»
+    /// (senza PTY non c'è eco naturale). No-op se il processo non è vivo o la riga è vuota.
+    func sendInput(_ line: String) {
+        guard processAlive, let process else { return }
+        guard !line.isEmpty else { return }
+        process.sendInput(line + "\n")
+        logs.ingest("❯ \(line)\n")
+        inputHistory.append(line)
+        if inputHistory.count > 100 { inputHistory.removeFirst(inputHistory.count - 100) }
+    }
+
     private var process: SpawnedProcess?
     private var stopRequested = false
     private var lastExitCode: Int32?

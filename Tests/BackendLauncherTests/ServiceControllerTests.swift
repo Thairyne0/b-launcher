@@ -120,6 +120,36 @@ private func fakeConfig(command: String) -> ServiceConfig {
         _ = await waitUntil { c.status == .stopped }
     }
 
+    @Test func sendInputEchoesAndReachesProcess() async throws {
+        // `cat` rimanda lo stdin: la riga inviata riappare nei log, preceduta dall'eco «❯».
+        let config = ServiceConfig(name: "fake", directory: "", command: "cat",
+                                   readiness: .processAlive)
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.start()
+        _ = await waitUntil { c.processAlive }
+        c.sendInput("ping-123")
+
+        // Eco immediato «❯ ping-123».
+        #expect(c.logs.lines.contains { $0.text == "❯ ping-123" })
+        // Storico aggiornato.
+        #expect(c.inputHistory == ["ping-123"])
+        // E la riga torna da cat sullo stdout.
+        let echoed = await waitUntil { c.logs.lines.contains { $0.text == "ping-123" } }
+        #expect(echoed)
+
+        c.stop()
+        _ = await waitUntil { !c.processAlive }
+    }
+
+    @Test func sendInputNoOpWhenNotAlive() {
+        let config = ServiceConfig(name: "fake", directory: "", command: "true",
+                                   readiness: .processAlive)
+        let c = ServiceController(config: config, cwd: "/tmp")
+        c.sendInput("niente")
+        #expect(c.logs.lines.isEmpty)
+        #expect(c.inputHistory.isEmpty)
+    }
+
     @Test func startWithCommandOverrideRunsVariantOnce() async throws {
         // L'override vale per QUELLO spawn: il comando di default resta in config.
         let config = ServiceConfig(name: "fake", directory: "", command: "echo default && sleep 60",
