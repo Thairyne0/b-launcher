@@ -382,14 +382,29 @@ struct ContentView: View {
                 // come azione secondaria; su Griglia/Focus è l'unico e resta prominente.
                 if case .project(let id) = currentSelection {
                     startAllButton(prominent: false)
-                    Button("Avvia progetto", systemImage: "play.fill") {
-                        model.startProject(named: id)
-                        ToastCenter.shared.show("Avvio progetto \(navigationTitle(for: currentSelection))",
-                                                systemImage: "play.circle.fill")
+                    // Col progetto che ha un'app principale, l'azione primaria diventa
+                    // "Avvia stack": backend a ondate, app per ultima, browser/notifica
+                    // a stack pronto. Senza main app resta il classico "Avvia progetto".
+                    let hasMainApp = model.services.contains {
+                        $0.config.projectName == id && $0.config.isMainApp
+                    }
+                    Button(hasMainApp ? "Avvia stack" : "Avvia progetto",
+                           systemImage: hasMainApp ? "play.square.stack" : "play.fill") {
+                        if hasMainApp {
+                            model.startStack(named: id)
+                            ToastCenter.shared.show("Avvio stack \(navigationTitle(for: currentSelection))…",
+                                                    systemImage: "play.circle.fill")
+                        } else {
+                            model.startProject(named: id)
+                            ToastCenter.shared.show("Avvio progetto \(navigationTitle(for: currentSelection))",
+                                                    systemImage: "play.circle.fill")
+                        }
                     }
                     .disabled(model.services.filter { $0.config.projectName == id }
                         .allSatisfy { $0.processAlive })
-                    .help("Avvia tutti i backend di questo progetto")
+                    .help(hasMainApp
+                          ? "Avvia i backend a ondate, l'app principale per ultima, e apri l'app a stack pronto"
+                          : "Avvia tutti i backend di questo progetto")
                     .buttonStyle(.glassProminent)
                 } else {
                     startAllButton(prominent: true)

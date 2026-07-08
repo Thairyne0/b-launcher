@@ -69,6 +69,9 @@ struct ServiceFormSheet: View {
     @State private var envBadgeDisabled = false
     @State private var envFileURL: URL?
     @State private var startAfter: Set<String> = []
+    @State private var appURLText: String = ""
+    @State private var isMainApp = false
+    @State private var variantsText: String = ""
     @State private var saveError: String?
     /// Evita di mostrare "il nome non può essere vuoto" prima ancora che l'utente abbia
     /// interagito col form (fastidioso in modalità "add" a sheet appena aperta).
@@ -190,6 +193,13 @@ struct ServiceFormSheet: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
+                TextField("Varianti (opzionali, separate da «;») — es. flutter run -d iphone; flutter run -d chrome",
+                          text: $variantsText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout)
+                Text("Le varianti compaiono nel menu contestuale della card (\"Avvia con…\") e valgono per il singolo avvio.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -249,6 +259,18 @@ struct ServiceFormSheet: View {
             iconSection
 
             startAfterSection
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("App (opzionale)").font(.headline)
+                TextField("URL app, es. http://localhost:5173", text: $appURLText)
+                    .textFieldStyle(.roundedBorder)
+                Toggle("App principale del progetto (\"Avvia stack\" la lancia per ultima, a backend pronti)",
+                       isOn: $isMainApp)
+                    .font(.callout)
+                Text("Con un URL: bottone \"apri nel browser\" sulla card, e apertura automatica a stack pronto. App native (Flutter, Electron…): lascia l'URL vuoto, l'app compare da sé.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Toggle("Questo backend non usa un file .env (nascondi il badge \".env mancante\")",
                    isOn: $envBadgeDisabled)
@@ -394,6 +416,16 @@ struct ServiceFormSheet: View {
         envBadgeDisabled = service.envBadgeDisabled ?? false
         envFileURL = service.envFile.map(URL.init(fileURLWithPath:))
         startAfter = Set(service.startAfter ?? [])
+        appURLText = service.appURL ?? ""
+        isMainApp = service.isMainApp ?? false
+        variantsText = (service.commandVariants ?? []).joined(separator: "; ")
+    }
+
+    /// Varianti dal campo testo: separate da ";", trim, vuote scartate.
+    private var parsedVariants: [String] {
+        variantsText.split(separator: ";")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     /// Picker per il file env alternativo (file nascosti visibili: .env.* iniziano col punto).
@@ -432,7 +464,12 @@ struct ServiceFormSheet: View {
                                     readiness: readiness, symbolName: symbolName,
                                     envBadgeDisabled: envBadgeDisabled ? true : nil,
                                     envFile: envFileURL?.path,
-                                    startAfter: startAfter.isEmpty ? nil : startAfter.sorted())
+                                    startAfter: startAfter.isEmpty ? nil : startAfter.sorted(),
+                                    appURL: appURLText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? nil
+                                        : appURLText.trimmingCharacters(in: .whitespacesAndNewlines),
+                                    isMainApp: isMainApp ? true : nil,
+                                    commandVariants: parsedVariants.isEmpty ? nil : parsedVariants)
         do {
             switch mode {
             case .add:

@@ -21,6 +21,10 @@ struct ProjectTemplate: Codable {
         /// Dipendenze di avvio (nomi nello stesso template). Se presente e non vuota,
         /// il template dichiara version 2 — vedi `versionRequired`.
         var startAfter: [String]? = nil
+        /// Additivi v2-frontend: URL app (localhost, portabile) e flag app principale.
+        var appURL: String? = nil
+        var isMainApp: Bool? = nil
+        var commandVariants: [String]? = nil
     }
 }
 
@@ -69,7 +73,10 @@ enum ProjectTemplateCodec {
                 command: service.command,
                 readiness: service.readiness,
                 envBadgeDisabled: service.envBadgeDisabled,
-                startAfter: service.startAfter
+                startAfter: service.startAfter,
+                appURL: service.appURL,
+                isMainApp: service.isMainApp,
+                commandVariants: service.commandVariants
             )
         }
         return ProjectTemplate(
@@ -100,7 +107,10 @@ enum ProjectTemplateCodec {
                 command: templateService.command,
                 readiness: templateService.readiness,
                 envBadgeDisabled: templateService.envBadgeDisabled,
-                startAfter: templateService.startAfter
+                startAfter: templateService.startAfter,
+                appURL: templateService.appURL,
+                isMainApp: templateService.isMainApp,
+                commandVariants: templateService.commandVariants
             )
         }
         let name = nameOverride?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false

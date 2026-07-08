@@ -110,6 +110,66 @@ import Testing
         #expect(reloaded.projects == store.projects)
     }
 
+    @Test func commandVariantsPersistAndBridge() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        try store.addProject(named: "P")
+        try store.addService(StoredService(
+            name: "mobile", directory: "/tmp/m", command: "flutter run",
+            readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+            commandVariants: ["flutter run -d macos", "flutter run -d chrome"]), toProject: "P")
+
+        let reloaded = ServiceStore(fileURL: url)
+        #expect(reloaded.projects.first?.services.first?.commandVariants
+                == ["flutter run -d macos", "flutter run -d chrome"])
+        let config = try #require(reloaded.serviceConfigs(for: reloaded.projects[0]).first)
+        #expect(config.commandVariants == ["flutter run -d macos", "flutter run -d chrome"])
+    }
+
+    @Test func appURLAndMainAppPersistAndBridge() throws {
+        let url = tempStoreURL()
+        let store = ServiceStore(fileURL: url)
+        try store.addProject(named: "P")
+        try store.addService(StoredService(
+            name: "web", directory: "/tmp/web", command: "npm run dev",
+            readiness: StoredReadiness(kind: .port, port: 5173, marker: nil),
+            appURL: "http://localhost:5173", isMainApp: true), toProject: "P")
+
+        let reloaded = ServiceStore(fileURL: url)
+        let service = try #require(reloaded.projects.first?.services.first)
+        #expect(service.appURL == "http://localhost:5173")
+        #expect(service.isMainApp == true)
+        let config = try #require(reloaded.serviceConfigs(for: reloaded.projects[0]).first)
+        #expect(config.appURL == "http://localhost:5173")
+        #expect(config.isMainApp == true)
+    }
+
+    @Test func onlyOneMainAppPerProject() throws {
+        let store = ServiceStore(fileURL: tempStoreURL())
+        try store.addProject(named: "P")
+        try store.addService(StoredService(
+            name: "a", directory: "/tmp/a", command: "true",
+            readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+            isMainApp: true), toProject: "P")
+        // Flaggarne una seconda sflagga la prima (al più una main app per progetto).
+        try store.addService(StoredService(
+            name: "b", directory: "/tmp/b", command: "true",
+            readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+            isMainApp: true), toProject: "P")
+
+        let project = try #require(store.projects.first)
+        #expect(project.services.first { $0.name == "a" }?.isMainApp != true)
+        #expect(project.services.first { $0.name == "b" }?.isMainApp == true)
+
+        // Stesso enforcement via updateService.
+        var serviceA = try #require(project.services.first { $0.name == "a" })
+        serviceA.isMainApp = true
+        try store.updateService(named: "a", inProject: "P", with: serviceA)
+        let after = try #require(store.projects.first)
+        #expect(after.services.first { $0.name == "a" }?.isMainApp == true)
+        #expect(after.services.first { $0.name == "b" }?.isMainApp != true)
+    }
+
     @Test func startAfterPersistsBridgesAndBumpsVersionTo2() throws {
         let url = tempStoreURL()
         let store = ServiceStore.seededWithSkillera(fileURL: url)

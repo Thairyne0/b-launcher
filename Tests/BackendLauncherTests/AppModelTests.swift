@@ -157,6 +157,39 @@ import Testing
         #expect(ids == ["ProjA/svc", "ProjB/svc"])
     }
 
+    @Test func startStackLaunchesMainAppLastAndFiresOnReady() async throws {
+        // Backend con readiness a marker + app principale: senza startAfter espliciti,
+        // startStack forza l'app in ultima ondata e chiama onReady DOPO che è pronta.
+        let store = ServiceStore(fileURL: tempStoreURL())
+        try store.addProject(named: "P")
+        try store.addService(
+            StoredService(name: "backend", directory: "/tmp",
+                          command: "echo pronto-adesso && sleep 60",
+                          readiness: StoredReadiness(kind: .logMarker, port: nil, marker: "pronto-adesso")),
+            toProject: "P")
+        try store.addService(
+            StoredService(name: "app", directory: "/tmp", command: "sleep 60",
+                          readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+                          isMainApp: true),
+            toProject: "P")
+        let model = AppModel(store: store, pollingEnabled: false, crashNotificationsEnabled: false)
+        let backend = try #require(model.services.first { $0.config.name == "backend" })
+        let app = try #require(model.services.first { $0.config.name == "app" })
+
+        var readyFired = false
+        model.startStack(named: "P") { readyFired = true }
+
+        let appAlive = await waitUntil { app.processAlive }
+        #expect(appAlive)
+        // L'app è partita solo quando il backend era già running.
+        #expect(backend.status == .running)
+        let fired = await waitUntil { readyFired }
+        #expect(fired)
+
+        model.stopAll()
+        _ = await waitUntil { model.services.allSatisfy { !$0.processAlive } }
+    }
+
     @Test func startProjectRespectsStartAfterOrder() async throws {
         // "primo" diventa running quando stampa il marker; "secondo" dipende da lui:
         // quando "secondo" risulta vivo, "primo" DEVE già essere running.

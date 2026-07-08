@@ -72,6 +72,21 @@ final class ServiceController: Identifiable {
         awaitingRecoveryNotice = false
     }
 
+    /// Storico dei comandi inviati allo stdin (terminale interattivo), per la navigazione
+    /// ↑/↓ della barra di input. Solo in memoria, cap 100.
+    private(set) var inputHistory: [String] = []
+
+    /// Invia una riga allo stdin del processo (+ `\n`) e la ecoa nel log come «❯ …»
+    /// (senza PTY non c'è eco naturale). No-op se il processo non è vivo o la riga è vuota.
+    func sendInput(_ line: String) {
+        guard processAlive, let process else { return }
+        guard !line.isEmpty else { return }
+        process.sendInput(line + "\n")
+        logs.ingest("❯ \(line)\n")
+        inputHistory.append(line)
+        if inputHistory.count > 100 { inputHistory.removeFirst(inputHistory.count - 100) }
+    }
+
     private var process: SpawnedProcess?
     private var stopRequested = false
     private var lastExitCode: Int32?
@@ -191,18 +206,21 @@ final class ServiceController: Identifiable {
         return leadingEnvAssignmentPattern.firstMatch(in: command, range: range) != nil
     }
 
-    func start() {
+    /// `commandOverride`: variante one-shot ("Avvia con…") — vale per QUESTO spawn,
+    /// il comando di default in config resta invariato.
+    func start(commandOverride: String? = nil) {
         guard !processAlive else { return }
         guard status != .external else {
             logs.ingest("[launcher] porta \(config.port.map(String.init) ?? "?") già occupata da un processo esterno — avvio rifiutato\n")
             return
         }
+        let command = commandOverride ?? config.command
         stopRequested = false
         lastExitCode = nil
         readyMarkerSeen = false
         startupMeasured = false
         markerTail = ""
-        logs.ingest("[launcher] ── avvio \(config.displayName) (\(config.command)) ──\n")
+        logs.ingest("[launcher] ── avvio \(config.displayName) (\(command)) ──\n")
         fileWriter.appendBanner("avvio \(config.displayName) — \(Date().formatted())")
         epoch += 1
         let myEpoch = epoch
@@ -220,7 +238,7 @@ final class ServiceController: Identifiable {
         do {
             let cwd = cwdOverride ?? config.workingDirectory.path
             process = try SpawnedProcess(
-                shellCommand: Self.wrappedShellCommand(for: config.command),
+                shellCommand: Self.wrappedShellCommand(for: command),
                 cwd: cwd,
                 extraEnvironment: extraEnvironment,
                 onChunk: { [weak self] chunk in

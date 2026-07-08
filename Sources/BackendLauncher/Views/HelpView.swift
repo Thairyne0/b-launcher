@@ -125,6 +125,7 @@ enum HelpContent {
                     "Pulisci per svuotare il terminale.",
                     "Autoscroll intelligente: non ti interrompe se stai scorrendo verso l'alto per rileggere."
                 ]),
+                .paragraph("Terminale interattivo: sotto il terminale di un servizio in esecuzione c'è una barra di input — scrivi una riga e premi Invio per mandarla allo stdin del processo (↑/↓ per lo storico comandi). Utile per rispondere a prompt o comandi di alcuni dev-server; i backend che non leggono lo stdin (es. NestJS) la ignorano. Ciò che invii compare come «❯ …» nei log."),
                 .paragraph("I log vengono salvati anche su file in ~/Library/Logs/BackendLauncher (rotazione a 5 MB). Tasto destro sul servizio → \"Apri log nel Finder\" per trovarli.")
             ]
         ),
@@ -151,6 +152,8 @@ enum HelpContent {
                 .paragraph("Sempre nel form puoi scegliere un file env alternativo (es. .env.staging): all'avvio le sue variabili vengono iniettate nell'ambiente del processo e vincono su quelle del .env. Il .env su disco non viene mai toccato — per tornare al normale basta rimuovere il file dal form."),
                 .subheading("Spia infrastruttura per progetto"),
                 .paragraph("Ogni progetto può avere la sua spia (NATS, Redis, …): l'indicatore in toolbar mostra quella del progetto selezionato e il warning d'avvio usa la spia del progetto giusto."),
+                .subheading("Full-stack: app principale e \"Avvia stack\""),
+                .paragraph("Il frontend (Next, Vite, Flutter, Expo, Electron…) è un servizio come gli altri. Nel suo form puoi dare un URL app (bottone \"apri nel browser\" sulla card) e marcarlo come app principale del progetto: il bottone prominente della toolbar diventa \"Avvia stack\" — backend a ondate, app per ultima a stack pronto, poi browser sull'URL (se web) e notifica \"Stack pronto\". Con le varianti di comando (es. flutter run -d iphone / -d chrome) scegli il device dal menu contestuale della card, \"Avvia con…\"."),
                 .subheading("File .env mancante"),
                 .paragraph("Un backend appena clonato di solito non ha il file .env (è escluso da git). La card lo segnala con un badge cliccabile: si apre una finestra dove incolli il contenuto ricevuto da un collega, o lo importi da un file, e il launcher crea .env nella cartella del backend."),
                 .bullets([

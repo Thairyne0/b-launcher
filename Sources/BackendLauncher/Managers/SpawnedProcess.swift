@@ -34,6 +34,11 @@ final class SpawnedProcess {
     private let stateLock = NSLock()
     private var _alive = true
 
+    /// Estremo di scrittura della pipe stdin del figlio (terminale interattivo). Protetto
+    /// da `stdinLock`; messo a -1 dopo la chiusura per non scrivere su un fd riciclato.
+    private let stdinLock = NSLock()
+    private var stdinWriteFD: Int32 = -1
+
     /// Riflette solo lo stato del processo leader (reaped via waitpid), NON del process group.
     /// Non usarlo come gate per l'escalation SIGKILL: il leader può terminare da SIGTERM
     /// mentre un discendente nello stesso group è ancora vivo (vedi `terminate`).
@@ -53,17 +58,31 @@ final class SpawnedProcess {
         guard pipe(&fds) == 0 else { throw SpawnError.pipeFailed(errno) }
         let readFD = fds[0], writeFD = fds[1]
 
+        // Pipe stdin (terminale interattivo): il figlio legge da `stdinReadFD` su fd 0,
+        // il padre scrive su `stdinWriteFD`. Se fallisce, l'output funziona comunque:
+        // ripieghiamo su /dev/null per lo stdin del figlio.
+        var stdinFDs: [Int32] = [0, 0]
+        let hasStdinPipe = pipe(&stdinFDs) == 0
+        let stdinReadFD = hasStdinPipe ? stdinFDs[0] : -1
+        let stdinWriteFDLocal = hasStdinPipe ? stdinFDs[1] : -1
+
         var fileActions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&fileActions)
         defer { posix_spawn_file_actions_destroy(&fileActions) }
         posix_spawn_file_actions_adddup2(&fileActions, writeFD, 1)
         posix_spawn_file_actions_adddup2(&fileActions, writeFD, 2)
+        if hasStdinPipe {
+            posix_spawn_file_actions_adddup2(&fileActions, stdinReadFD, 0)
+            posix_spawn_file_actions_addclose(&fileActions, stdinReadFD)
+            posix_spawn_file_actions_addclose(&fileActions, stdinWriteFDLocal)
+        }
         posix_spawn_file_actions_addclose(&fileActions, readFD)
         posix_spawn_file_actions_addclose(&fileActions, writeFD)
         let chdirRC = posix_spawn_file_actions_addchdir(&fileActions, cwd)
         guard chdirRC == 0 else {
             close(readFD)
             close(writeFD)
+            if hasStdinPipe { close(stdinReadFD); close(stdinWriteFDLocal) }
             throw SpawnError.spawnFailed(chdirRC)
         }
 
@@ -85,11 +104,14 @@ final class SpawnedProcess {
         var childPID: pid_t = 0
         let rc = posix_spawn(&childPID, "/bin/zsh", &fileActions, &attrs, &cArgv, &cEnv)
         close(writeFD)  // lato scrittura resta solo nel figlio
+        if hasStdinPipe { close(stdinReadFD) }  // lato lettura resta solo nel figlio
         guard rc == 0 else {
             close(readFD)
+            if hasStdinPipe { close(stdinWriteFDLocal) }
             throw SpawnError.spawnFailed(rc)
         }
         pid = childPID
+        stdinWriteFD = stdinWriteFDLocal
 
         readHandle = FileHandle(fileDescriptor: readFD, closeOnDealloc: true)
         readHandle.readabilityHandler = { handle in
@@ -144,7 +166,34 @@ final class SpawnedProcess {
     /// processo in background lanciato con `&`) impiega più tempo a reagire allo stesso
     /// segnale. Si sonda il process group direttamente con `killpg(pid, 0)`: nessun segnale
     /// viene consegnato, ma l'esito rivela se qualche membro del gruppo risponde ancora.
+    /// Scrive `text` sullo stdin del figlio (terminale interattivo). Best-effort:
+    /// se il figlio ha già chiuso lo stdin (EPIPE) o la pipe non esiste, no-op silenzioso.
+    /// Il chiamante include l'eventuale `\n` per "inviare una riga".
+    func sendInput(_ text: String) {
+        stdinLock.lock(); defer { stdinLock.unlock() }
+        guard stdinWriteFD >= 0 else { return }
+        let bytes = Array(text.utf8)
+        var offset = 0
+        bytes.withUnsafeBytes { buffer in
+            while offset < buffer.count {
+                let n = write(stdinWriteFD, buffer.baseAddress!.advanced(by: offset), buffer.count - offset)
+                if n < 0 {
+                    if errno == EINTR { continue }
+                    return  // EPIPE/altro: il figlio non legge più, lascia perdere
+                }
+                offset += n
+            }
+        }
+    }
+
+    /// Chiude lo stdin del figlio (EOF): usato in `terminate` e a fine vita. Idempotente.
+    private func closeStdin() {
+        stdinLock.lock(); defer { stdinLock.unlock() }
+        if stdinWriteFD >= 0 { close(stdinWriteFD); stdinWriteFD = -1 }
+    }
+
     func terminate(gracePeriod: TimeInterval = 5) {
+        closeStdin()  // EOF su stdin: i programmi che lo leggono escono da soli
         killpg(pid, SIGTERM)
         let pid = self.pid
         DispatchQueue.global().asyncAfter(deadline: .now() + gracePeriod) {
@@ -160,6 +209,7 @@ final class SpawnedProcess {
 
     private func markDead() {
         stateLock.lock(); _alive = false; stateLock.unlock()
+        closeStdin()  // il figlio è morto: rilascia il write-end della pipe stdin
     }
 
     /// wait(2) status → exit code convenzionale (segnale N → 128+N).

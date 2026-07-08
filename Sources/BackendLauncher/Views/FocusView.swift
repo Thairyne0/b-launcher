@@ -113,7 +113,7 @@ struct ServicePaneView: View {
     var body: some View {
         VStack(spacing: 8) {
             header
-            TerminalView(logs: controller.logs)
+            TerminalView(logs: controller.logs, controller: controller)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(16)

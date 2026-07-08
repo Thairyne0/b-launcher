@@ -41,6 +41,18 @@ enum CrashNotifier {
         UNUserNotificationCenter.current().add(request)
     }
 
+    /// Notifica "Stack pronto" a fine "Avvia stack": utile quando nel frattempo si è
+    /// passati all'IDE/browser. Stesso gate delle altre notifiche.
+    static func notifyStackReady(project: String) {
+        guard isAvailable, AppSettings.crashNotificationsEnabled else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Stack \(project) pronto"
+        content.body = "Tutti i backend sono su. Buon lavoro."
+        let request = UNNotificationRequest(identifier: UUID().uuidString,
+                                            content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
     /// Notifica di RECOVERY: un servizio che era crashato è tornato pronto (verde).
     /// Chiude il cerchio della notifica di crash — stesso gate delle impostazioni.
     static func notifyRecovery(service: String, serviceID: String) {

@@ -346,10 +346,16 @@ final class AppModel {
     /// Nessuna dipendenza nel set → percorso storico (start piatto immediato).
     /// Dipendenze verso servizi FUORI dal set: soddisfatte se il servizio è già running,
     /// altrimenti ignorate (non possiamo attendere chi non stiamo avviando).
+    /// `forceLast`: nome (nel set) da mettere in ULTIMA ondata come dipendente da tutti
+    /// gli altri — usato da "Avvia stack" per l'app principale. `onComplete`: chiamato a
+    /// fine orchestrazione DOPO la readiness dell'ultima ondata (mai su cancellazione né
+    /// sul fallback per ciclo).
     private func startRespectingDependencies(_ controllers: [ServiceController],
                                              orchestrationKey: String,
-                                             waveTimeout: TimeInterval = 90) {
-        guard controllers.contains(where: { !$0.config.startAfter.isEmpty }) else {
+                                             waveTimeout: TimeInterval = 90,
+                                             forceLast: String? = nil,
+                                             onComplete: (@MainActor () -> Void)? = nil) {
+        guard controllers.contains(where: { !$0.config.startAfter.isEmpty }) || forceLast != nil else {
             controllers.forEach { $0.start() }
             return
         }
@@ -358,11 +364,15 @@ final class AppModel {
         let alreadyRunning = Set(services
             .filter { $0.config.projectName == projectName && $0.status == .running }
             .map(\.config.name))
-        let entries = controllers.map { controller in
-            (name: controller.config.name,
-             startAfter: controller.config.startAfter.filter {
-                 setNames.contains($0) && !alreadyRunning.contains($0)
-             })
+        let entries = controllers.map { controller -> (name: String, startAfter: [String]) in
+            if let forceLast, controller.config.name == forceLast {
+                // App principale: dipende da TUTTI gli altri del set (ultima ondata).
+                return (forceLast, controllers.map(\.config.name).filter { $0 != forceLast })
+            }
+            return (controller.config.name,
+                    controller.config.startAfter.filter {
+                        setNames.contains($0) && !alreadyRunning.contains($0) && $0 != forceLast
+                    })
         }
         guard let waves = StartOrchestrator.waves(services: entries) else {
             for controller in controllers {
@@ -379,11 +389,12 @@ final class AppModel {
                 let waveControllers = wave.compactMap { byName[$0] }
                 for controller in waveControllers where !controller.processAlive {
                     if index > 0 {
-                        controller.logs.ingest("[launcher] avvio in ondata \(index + 1) (dopo: \(controller.config.startAfter.joined(separator: ", ")))\n")
+                        controller.logs.ingest("[launcher] avvio in ondata \(index + 1)\n")
                     }
                     controller.start()
                 }
-                guard index < waves.count - 1 else { break }  // ultima ondata: niente attesa
+                // Ultima ondata: si attende solo se qualcuno vuole sapere quando è pronta.
+                if index == waves.count - 1 && onComplete == nil { break }
                 let deadline = Date().addingTimeInterval(waveTimeout)
                 while Date() < deadline, !Task.isCancelled {
                     // In attesa solo dei vivi non ancora pronti: un servizio morto nel
@@ -395,8 +406,33 @@ final class AppModel {
                     try? await Task.sleep(nanoseconds: 250_000_000)
                 }
             }
+            guard let self, !Task.isCancelled else { return }
+            onComplete?()
             _ = self
         }
+    }
+
+    /// "Avvia stack": avvio orchestrato del progetto con l'app principale per ultima; a
+    /// stack pronto apre l'`appURL` della main app (se presente) e notifica. `onReady`
+    /// iniettabile nei test (sostituisce le azioni di default).
+    func startStack(named projectName: String, onReady: (@MainActor () -> Void)? = nil) {
+        warnIfInfraDown(forProject: projectName)
+        let targets = services.filter {
+            $0.config.projectName == projectName && !$0.processAlive
+        }
+        let mainAppName = targets.first { $0.config.isMainApp }?.config.name
+        let completion: @MainActor () -> Void = onReady ?? { [weak self] in
+            guard let self else { return }
+            if let main = self.services.first(where: {
+                $0.config.projectName == projectName && $0.config.isMainApp
+            }), let urlString = main.config.appURL, let url = URL(string: urlString) {
+                NSWorkspace.shared.open(url)
+            }
+            CrashNotifier.notifyStackReady(project: projectName)
+            ToastCenter.shared.show("Stack \(projectName) pronto", systemImage: "checkmark.seal.fill")
+        }
+        startRespectingDependencies(targets, orchestrationKey: projectName,
+                                    forceLast: mainAppName, onComplete: completion)
     }
 
     /// Avvia un profilo facendo match sul nome breve tra TUTTI i servizi (comportamento

@@ -206,7 +206,7 @@ struct ServiceCardView: View {
             }
 
             if showTerminal {
-                TerminalView(logs: controller.logs)
+                TerminalView(logs: controller.logs, controller: controller)
                     .frame(height: 400)
                     .padding([.horizontal, .bottom], 16)
             }
@@ -234,6 +234,17 @@ struct ServiceCardView: View {
             }
         }
         .contextMenu {
+            if !controller.config.commandVariants.isEmpty {
+                Menu("Avvia con…") {
+                    ForEach(controller.config.commandVariants, id: \.self) { variant in
+                        Button(variant) {
+                            controller.start(commandOverride: variant)
+                        }
+                        .disabled(controller.processAlive)
+                    }
+                }
+                Divider()
+            }
             Button("Apri directory nel Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([controller.config.workingDirectory])
             }
@@ -292,6 +303,16 @@ struct ServiceCardView: View {
     private var controlButtons: some View {
         let status = controller.status
         HStack(spacing: 8) {
+            if let appURL = controller.config.appURL, let url = URL(string: appURL) {
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Image(systemName: "safari")
+                }
+                .padding(4)
+                .help("Apri \(appURL)")
+            }
+
             Button {
                 controller.start()
             } label: {

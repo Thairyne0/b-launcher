@@ -4,8 +4,14 @@ import AppKit
 /// Log live di un servizio: monospace, sfondo scuro, ricerca, autoscroll, pulisci.
 struct TerminalView: View {
     @Bindable var logs: LogStore
+    /// Controller opzionale: se presente e il processo è vivo, mostra la barra di input
+    /// interattiva (scrivi nello stdin del processo). `nil` = terminale solo-lettura.
+    var controller: ServiceController? = nil
     @State private var autoscroll = true
     @State private var currentMatchIndex = 0
+    @State private var inputText = ""
+    /// Posizione nella navigazione dello storico comandi (nil = riga nuova in scrittura).
+    @State private var historyCursor: Int?
     // AppSettings vive su UserDefaults (non @Observable): senza questo bridge la body
     // non si ri-valuterebbe ai cambi di dimensione testo (es. da ⌘+/⌘- o da SettingsView).
     // La chiave DEVE combaciare esattamente con `AppSettings.Keys.terminalFontSize`.
@@ -121,6 +127,10 @@ struct TerminalView: View {
             }
 
             logArea
+
+            if let controller, controller.processAlive {
+                inputBar(controller)
+            }
         }
         .onChange(of: logs.searchText) { _, _ in
             currentMatchIndex = 0
@@ -182,6 +192,60 @@ struct TerminalView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Barra di input interattiva: scrivi una riga → invio → stdin del processo.
+    /// ↑/↓ scorrono lo storico comandi (`ServiceController.inputHistory`).
+    private func inputBar(_ controller: ServiceController) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "chevron.right")
+                .font(.caption.bold())
+                .foregroundStyle(.green)
+            TextField("Invia allo stdin del processo…", text: $inputText)
+                .textFieldStyle(.plain)
+                .font(.callout.monospaced())
+                .onSubmit { send(controller) }
+                .onKeyPress(.upArrow) { recallHistory(controller, delta: -1); return .handled }
+                .onKeyPress(.downArrow) { recallHistory(controller, delta: 1); return .handled }
+            Button {
+                send(controller)
+            } label: {
+                Image(systemName: "return")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .disabled(inputText.isEmpty)
+            .help("Invia (i programmi che non leggono lo stdin, es. NestJS, lo ignorano)")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(red: 0.05, green: 0.07, blue: 0.10).opacity(0.92), in: .rect(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.08)))
+    }
+
+    private func send(_ controller: ServiceController) {
+        let line = inputText
+        guard !line.isEmpty else { return }
+        controller.sendInput(line)
+        inputText = ""
+        historyCursor = nil
+    }
+
+    /// Navigazione storico: -1 = più vecchio, +1 = più recente; oltre l'ultimo torna alla
+    /// riga vuota in scrittura.
+    private func recallHistory(_ controller: ServiceController, delta: Int) {
+        let history = controller.inputHistory
+        guard !history.isEmpty else { return }
+        let current = historyCursor ?? history.count
+        let target = current + delta
+        if target >= history.count {
+            historyCursor = nil
+            inputText = ""
+        } else {
+            let clamped = max(0, target)
+            historyCursor = clamped
+            inputText = history[clamped]
+        }
     }
 
     private func stepMatch(by delta: Int) {

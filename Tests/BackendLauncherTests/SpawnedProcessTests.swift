@@ -79,6 +79,24 @@ import Testing
         }
     }
 
+    @Test func sendInputReachesChildStdin() async throws {
+        // `cat` rimanda su stdout ciò che riceve su stdin: se sendInput funziona, la riga
+        // inviata riappare nell'output.
+        let rec = Recorder()
+        let proc = try SpawnedProcess(
+            shellCommand: "cat",
+            cwd: "/tmp",
+            callbackQueue: rec.queue,
+            onChunk: { rec.chunk($0) },
+            onExit: { rec.exited($0) }
+        )
+        proc.sendInput("ciao-stdin\n")
+        let echoed = await waitUntil { rec.queue.sync { rec.output.contains("ciao-stdin") } }
+        #expect(echoed)
+        proc.terminate(gracePeriod: 1)  // chiude stdin → cat esce
+        _ = await waitUntil { rec.queue.sync { rec.exitCode != nil } }
+    }
+
     @Test func spawnFailsForMissingCwd() {
         #expect(throws: (any Error).self) {
             _ = try SpawnedProcess(

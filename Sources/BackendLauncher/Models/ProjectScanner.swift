@@ -135,6 +135,20 @@ enum ProjectScanner {
             return ScannedServiceCandidate(service: service, hasNestDependency: false)
         }
 
+        // Flutter: pubspec.yaml → `flutter run` (device di default; varianti -d come
+        // comandi alternativi). Prima di Python/Java: un progetto Flutter non ha altri
+        // manifest, ma la precedenza esplicita evita sorprese.
+        if fileManager.fileExists(atPath: directory.appendingPathComponent("pubspec.yaml").path) {
+            let service = ScannedService(
+                name: name,
+                relativeDirectory: relativeDirectory,
+                command: "flutter run",
+                readiness: StoredReadiness(kind: .processAlive, port: nil, marker: nil),
+                sourceHint: "pubspec.yaml (Flutter)"
+            )
+            return ScannedServiceCandidate(service: service, hasNestDependency: false)
+        }
+
         if let python = scanPythonService(in: directory, relativeDirectory: relativeDirectory, name: name) {
             return python
         }
