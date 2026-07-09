@@ -184,6 +184,13 @@ struct SidebarView: View {
                         copyClaudeCodePrompt()
                     }
                     .keyboardShortcut("g", modifiers: [.command, .shift])
+
+                    if VSCodeExtensionInstaller.extensionDirectory != nil {
+                        Divider()
+                        Button("Installa estensione VSCode…", systemImage: "puzzlepiece.extension") {
+                            installVSCodeExtension()
+                        }
+                    }
                 } label: {
                     Label("Aggiungi progetto", systemImage: "plus")
                 }
@@ -342,6 +349,27 @@ struct SidebarView: View {
         pasteboard.setString(ClaudeCodePrompt.make(), forType: .string)
 
         ToastCenter.shared.show("Prompt copiato", systemImage: "checkmark")
+    }
+
+    /// Installa l'estensione VSCode dal `.vsix` nel clone (via `code --install-extension`).
+    /// L'operazione spawna `code`: fuori dal MainActor; esito riportato con un toast.
+    private func installVSCodeExtension() {
+        ToastCenter.shared.show("Installazione estensione…", systemImage: "puzzlepiece.extension")
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                VSCodeExtensionInstaller.install()
+            }.value
+            switch result {
+            case .installed:
+                ToastCenter.shared.show("Estensione VSCode installata", systemImage: "checkmark.circle.fill")
+            case .noRepo:
+                ToastCenter.shared.show("Clone non trovato", systemImage: "xmark.octagon.fill")
+            case .noVsix:
+                ToastCenter.shared.show("Nessun .vsix — esegui \"make vsix\"", systemImage: "exclamationmark.triangle.fill")
+            case .failed(let message):
+                ToastCenter.shared.show(String(message.prefix(80)), systemImage: "xmark.octagon.fill")
+            }
+        }
     }
 
     /// Bottone "Scansiona cartella…": NSOpenPanel diretto (stesso motivo delle altre sheet di

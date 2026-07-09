@@ -1,4 +1,4 @@
-.PHONY: build test app run dev clean install update
+.PHONY: build test app run dev clean install update vsix
 
 build:
 	swift build
@@ -25,6 +25,12 @@ update:
 	-osascript -e 'quit app "Backend Launcher"' 2>/dev/null || true
 	git pull --ff-only
 	$(MAKE) install
+
+# Costruisce il pacchetto .vsix dell'estensione VSCode (installabile con
+# "Installa estensione VSCode…" dall'app o con code --install-extension).
+vsix:
+	cd vscode-extension && npm install && npm run package
+	@echo "✓ .vsix in vscode-extension/"
 
 dev:
 	swift run

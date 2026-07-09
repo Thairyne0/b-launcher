@@ -4,10 +4,17 @@
   "description": "Avvia e gestisci i backend di sviluppo dei tuoi progetti, in terminali VSCode veri. Legge lo stesso services.json dell'app Backend Launcher.",
   "version": "0.0.1",
   "publisher": "blauncher",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Thairyne0/b-launcher.git",
+    "directory": "vscode-extension"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": ["Other"],
+  "keywords": ["backend", "launcher", "orchestrator", "dev servers", "monorepo"],
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished"
