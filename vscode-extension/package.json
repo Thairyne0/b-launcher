@@ -1,0 +1,65 @@
+{
+  "name": "backend-launcher",
+  "displayName": "Backend Launcher",
+  "description": "Avvia e gestisci i backend di sviluppo dei tuoi progetti, in terminali VSCode veri. Legge lo stesso services.json dell'app Backend Launcher.",
+  "version": "0.0.1",
+  "publisher": "blauncher",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:backendLauncherServices"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "backendLauncher",
+          "title": "Backend Launcher",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "backendLauncher": [
+        {
+          "id": "backendLauncherServices",
+          "name": "Servizi"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "backendLauncher.refresh",
+        "title": "Backend Launcher: Aggiorna",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "backendLauncher.refresh",
+          "when": "view == backendLauncherServices",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "vscode:prepublish": "node esbuild.js --production",
+    "package": "vsce package --no-dependencies",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.30.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
