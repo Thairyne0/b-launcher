@@ -6,6 +6,26 @@ import {
   StoredService,
 } from "./store";
 import { ServiceRunner, serviceKey } from "./runner";
+import { DisplayStatus } from "./probes";
+import { StatusTracker } from "./status";
+
+function statusColor(status: DisplayStatus): vscode.ThemeColor {
+  switch (status) {
+    case "running": return new vscode.ThemeColor("charts.green");
+    case "starting": return new vscode.ThemeColor("charts.yellow");
+    case "external": return new vscode.ThemeColor("charts.blue");
+    case "stopped": return new vscode.ThemeColor("disabledForeground");
+  }
+}
+
+function statusLabel(status: DisplayStatus): string {
+  switch (status) {
+    case "running": return "in esecuzione";
+    case "starting": return "avvio…";
+    case "external": return "esterno";
+    case "stopped": return "fermo";
+  }
+}
 
 /** Nodo dell'albero: un progetto, un servizio, o una riga-messaggio (stato vuoto/errore). */
 export type Node =
@@ -26,6 +46,7 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
 
   constructor(
     private readonly runner: ServiceRunner,
+    private readonly status: StatusTracker,
     private readonly storePath?: string,
   ) {}
 
@@ -51,9 +72,10 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
           node.project.name,
           vscode.TreeItemCollapsibleState.Expanded,
         );
-        const running = node.project.services.filter(
-          (s) => this.runner.state(serviceKey(node.project.name, s.name)) === "running",
-        ).length;
+        const running = node.project.services.filter((s) => {
+          const st = this.status.status(serviceKey(node.project.name, s.name));
+          return st === "running" || st === "starting";
+        }).length;
         if (node.detected) {
           item.iconPath = new vscode.ThemeIcon("search");
           item.contextValue = running > 0 ? "detected.running" : "detected.stopped";
@@ -68,18 +90,16 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
       }
       case "service": {
         const key = serviceKey(node.project.name, node.service.name);
-        const running = this.runner.state(key) === "running";
+        const st = this.status.status(key);
+        const alive = this.runner.state(key) === "running";
         const item = new vscode.TreeItem(
           node.service.name,
           vscode.TreeItemCollapsibleState.None,
         );
-        item.iconPath = new vscode.ThemeIcon(
-          "circle-filled",
-          new vscode.ThemeColor(running ? "charts.green" : "disabledForeground"),
-        );
-        item.contextValue = running ? "service.running" : "service.stopped";
-        item.description = readinessCaption(node.service.readiness)
-          + (running ? " · in esecuzione" : "");
+        item.iconPath = new vscode.ThemeIcon("circle-filled", statusColor(st));
+        // "alive" (terminale nostro) → menu stop/restart; altrimenti play.
+        item.contextValue = alive ? "service.running" : "service.stopped";
+        item.description = `${readinessCaption(node.service.readiness)} · ${statusLabel(st)}`;
         item.tooltip = `${node.service.command}\n${node.service.directory}`;
         return item;
       }

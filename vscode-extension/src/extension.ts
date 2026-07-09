@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { defaultStorePath, loadStore, StoredProject, StoredService } from "./store";
 import { ServiceRunner, serviceKey } from "./runner";
 import { scanDirectory } from "./scanner";
+import { ServiceSnapshot, StatusTracker } from "./status";
 import { Node, ServicesTreeProvider } from "./tree";
 
 /**
@@ -13,11 +14,36 @@ import { Node, ServicesTreeProvider } from "./tree";
 export function activate(context: vscode.ExtensionContext): void {
   const storePath = defaultStorePath();
   const runner = new ServiceRunner(context);
-  const provider = new ServicesTreeProvider(runner, storePath);
+  let detectedProjects: StoredProject[] = [];
 
-  // Lo stato dei terminali cambia → ridisegna l'albero (pallini, contatori).
-  context.subscriptions.push(runner.onDidChange(() => provider.refresh()));
+  // Snapshot di tutti i servizi (configurati + rilevati) per i probe di readiness.
+  const tracker = new StatusTracker((): ServiceSnapshot[] => {
+    const snapshots: ServiceSnapshot[] = [];
+    const push = (project: StoredProject) => {
+      for (const service of project.services) {
+        const key = serviceKey(project.name, service.name);
+        snapshots.push({ key, readiness: service.readiness, alive: runner.state(key) === "running" });
+      }
+    };
+    const result = loadStore(storePath);
+    if (result.ok) result.projects.forEach(push);
+    detectedProjects.forEach(push);
+    return snapshots;
+  });
+
+  const provider = new ServicesTreeProvider(runner, tracker, storePath);
+  // `setDetected` aggiorna sia l'albero sia lo snapshot per i probe.
+  const setDetected = (projects: StoredProject[]) => {
+    detectedProjects = projects;
+    provider.setDetected(projects);
+  };
+
+  // Stato terminali o probe cambiano → ridisegna l'albero.
+  context.subscriptions.push(runner.onDidChange(() => { void tracker.pollOnce(); provider.refresh(); }));
+  context.subscriptions.push(tracker.onDidChange(() => provider.refresh()));
   context.subscriptions.push({ dispose: () => runner.dispose() });
+  context.subscriptions.push({ dispose: () => tracker.dispose() });
+  tracker.start();
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider("backendLauncherServices", provider),
@@ -63,7 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("backendLauncher.scanWorkspace", () => {
       const detected = scanWorkspace();
-      provider.setDetected(detected);
+      setDetected(detected);
       const total = detected.reduce((n, p) => n + p.services.length, 0);
       vscode.window.showInformationMessage(
         total > 0
@@ -77,7 +103,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // configurati, mostra i backend rilevati (effimeri, avviabili subito).
   const auto = scanWorkspace();
   if (auto.length > 0 && !workspaceAlreadyConfigured(storePath)) {
-    provider.setDetected(auto);
+    setDetected(auto);
   }
 
   watchStore(storePath, () => provider.refresh(), context);
