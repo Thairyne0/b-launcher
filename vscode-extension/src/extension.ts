@@ -6,10 +6,11 @@ import { ServiceRunner, serviceKey } from "./runner";
 import { scanDirectory } from "./scanner";
 import { ServiceSnapshot, StatusTracker } from "./status";
 import { Node, ServicesTreeProvider } from "./tree";
+import { appendProject } from "./writeStore";
 
 /**
- * Fase 2 — avvia/ferma/riavvia i servizi in terminali VSCode veri, con icone sui nodi
- * e comandi (inline + menu contestuale + palette). Sopra la lettura di Fase 1.
+ * Estensione completa: lettura services.json + scan workspace + avvio in terminali VSCode
+ * veri + readiness reale + azioni progetto/globali + dashboard terminali + status bar.
  */
 export function activate(context: vscode.ExtensionContext): void {
   const storePath = defaultStorePath();
@@ -87,6 +88,74 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }),
 
+    vscode.commands.registerCommand("backendLauncher.restartProject", (node?: Node) => {
+      withProject(node, storePath, (project) => {
+        for (const service of project.services) {
+          if (runner.state(serviceKey(project.name, service.name)) === "running") {
+            runner.restart(project, service);
+          }
+        }
+      });
+    }),
+
+    // Dashboard: tutti i terminali del progetto affiancati nell'area editor.
+    vscode.commands.registerCommand("backendLauncher.openProjectDashboard", (node?: Node) => {
+      withProject(node, storePath, (project) => runner.openProjectDashboard(project));
+    }),
+
+    // "Avvia stack": backend prima, app principale per ultima, poi apri l'URL dell'app.
+    vscode.commands.registerCommand("backendLauncher.startStack", (node?: Node) => {
+      withProject(node, storePath, (project) => {
+        const main = project.services.find((s) => s.isMainApp);
+        const backends = project.services.filter((s) => !s.isMainApp);
+        for (const service of backends) runner.start(project, service);
+        if (main) {
+          runner.start(project, main);
+          if (main.appURL) openUrl(main.appURL);
+        }
+        vscode.window.showInformationMessage(`Stack ${project.name} avviato.`);
+      });
+    }),
+
+    vscode.commands.registerCommand("backendLauncher.openAppUrl", (node?: Node) => {
+      if (node?.kind === "service" && node.service.appURL) openUrl(node.service.appURL);
+    }),
+
+    // Azioni globali con conferma per quelle di massa.
+    vscode.commands.registerCommand("backendLauncher.startAll", () => {
+      forAllProjects(storePath, detectedProjects, (project) => {
+        for (const service of project.services) runner.start(project, service);
+      });
+    }),
+    vscode.commands.registerCommand("backendLauncher.stopAll", async () => {
+      const ok = await confirm("Fermare tutti i backend?", "Ferma tutti");
+      if (!ok) return;
+      forAllProjects(storePath, detectedProjects, (project) => {
+        for (const service of project.services) {
+          runner.stop(serviceKey(project.name, service.name));
+        }
+      });
+    }),
+
+    // Salva un progetto rilevato nel services.json (lo vedrà anche l'app nativa).
+    vscode.commands.registerCommand("backendLauncher.saveDetectedProject", async (node?: Node) => {
+      if (node?.kind !== "project" || !node.detected) return;
+      const name = await vscode.window.showInputBox({
+        prompt: "Nome del progetto da salvare",
+        value: node.project.name,
+      });
+      if (!name) return;
+      const result = appendProject(storePath, { ...node.project, name });
+      if (result.ok) {
+        vscode.window.showInformationMessage(`Progetto "${name}" salvato in services.json.`);
+        detectedProjects = detectedProjects.filter((p) => p !== node.project);
+        provider.setDetected(detectedProjects);
+        provider.refresh();
+      } else {
+        vscode.window.showErrorMessage(result.message);
+      }
+    }),
+
     vscode.commands.registerCommand("backendLauncher.scanWorkspace", () => {
       const detected = scanWorkspace();
       setDetected(detected);
@@ -99,6 +168,24 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
+  // Status bar: stato aggregato, click → apre la view.
+  const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  statusItem.command = "backendLauncherServices.focus";
+  const updateStatusBar = () => {
+    const snaps = tracker; // usa la mappa interna via status()
+    const all = collectServiceKeys(storePath, detectedProjects);
+    const running = all.filter((k) => {
+      const s = snaps.status(k);
+      return s === "running" || s === "starting";
+    }).length;
+    statusItem.text = `$(server-process) ${running}/${all.length}`;
+    statusItem.tooltip = "Backend Launcher — clic per aprire";
+    if (all.length > 0) statusItem.show(); else statusItem.hide();
+  };
+  context.subscriptions.push(statusItem);
+  context.subscriptions.push(tracker.onDidChange(updateStatusBar));
+  updateStatusBar();
+
   // Scan automatico all'avvio: se il workspace aperto non è già coperto dai progetti
   // configurati, mostra i backend rilevati (effimeri, avviabili subito).
   const auto = scanWorkspace();
@@ -107,6 +194,35 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   watchStore(storePath, () => provider.refresh(), context);
+}
+
+function openUrl(url: string): void {
+  vscode.env.openExternal(vscode.Uri.parse(url));
+}
+
+async function confirm(message: string, action: string): Promise<boolean> {
+  const pick = await vscode.window.showWarningMessage(message, { modal: true }, action);
+  return pick === action;
+}
+
+/** Itera tutti i progetti (configurati da store + rilevati). */
+function forAllProjects(
+  storePath: string,
+  detected: StoredProject[],
+  action: (project: StoredProject) => void,
+): void {
+  const result = loadStore(storePath);
+  if (result.ok) result.projects.forEach(action);
+  detected.forEach(action);
+}
+
+/** Chiavi di tutti i servizi noti, per lo stato aggregato nella status bar. */
+function collectServiceKeys(storePath: string, detected: StoredProject[]): string[] {
+  const keys: string[] = [];
+  forAllProjects(storePath, detected, (project) => {
+    for (const service of project.services) keys.push(serviceKey(project.name, service.name));
+  });
+  return keys;
 }
 
 /** Scandisce ogni cartella aperta nel workspace VSCode; una per progetto "rilevato". */

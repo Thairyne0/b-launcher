@@ -97,8 +97,10 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
           vscode.TreeItemCollapsibleState.None,
         );
         item.iconPath = new vscode.ThemeIcon("circle-filled", statusColor(st));
-        // "alive" (terminale nostro) → menu stop/restart; altrimenti play.
-        item.contextValue = alive ? "service.running" : "service.stopped";
+        // contextValue pilota i menu: "running/stopped" (terminale nostro) + ".url" se
+        // il servizio ha un appURL (mostra "Apri nel browser").
+        const urlSuffix = node.service.appURL ? ".url" : "";
+        item.contextValue = (alive ? "service.running" : "service.stopped") + urlSuffix;
         item.description = `${readinessCaption(node.service.readiness)} · ${statusLabel(st)}`;
         item.tooltip = `${node.service.command}\n${node.service.directory}`;
         return item;

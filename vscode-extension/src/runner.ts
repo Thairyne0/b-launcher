@@ -37,8 +37,17 @@ export class ServiceRunner {
     return this.terminals.has(key) ? "running" : "stopped";
   }
 
-  /** Avvia il servizio (o `commandOverride`, es. una variante) in un terminale dedicato. */
-  start(project: StoredProject, service: StoredService, commandOverride?: string): void {
+  /**
+   * Avvia il servizio (o `commandOverride`) in un terminale dedicato. `location` permette
+   * di aprirlo nell'area editor a una colonna specifica (per la dashboard "tutti i
+   * terminali del progetto affiancati").
+   */
+  start(
+    project: StoredProject,
+    service: StoredService,
+    commandOverride?: string,
+    location?: vscode.TerminalOptions["location"],
+  ): void {
     const key = serviceKey(project.name, service.name);
     const existing = this.terminals.get(key);
     if (existing) {
@@ -49,11 +58,34 @@ export class ServiceRunner {
       name: `${service.name} · ${project.name}`,
       cwd: service.directory,
       iconPath: new vscode.ThemeIcon("server-process"),
+      location,
     });
     terminal.show();
     terminal.sendText(commandOverride ?? service.command, true);
     this.terminals.set(key, terminal);
     this.changeEmitter.fire();
+  }
+
+  /**
+   * Apre TUTTI i terminali dei servizi del progetto affiancati nell'area editor (una
+   * colonna per servizio) — la "finestra" con tutto lo stack sott'occhio. I servizi non
+   * ancora avviati partono in colonna; quelli già vivi vengono solo rivelati.
+   */
+  openProjectDashboard(project: StoredProject): void {
+    const columns = [
+      vscode.ViewColumn.One, vscode.ViewColumn.Two, vscode.ViewColumn.Three,
+      vscode.ViewColumn.Four, vscode.ViewColumn.Five, vscode.ViewColumn.Six,
+      vscode.ViewColumn.Seven, vscode.ViewColumn.Eight, vscode.ViewColumn.Nine,
+    ];
+    project.services.forEach((service, index) => {
+      const key = serviceKey(project.name, service.name);
+      if (this.terminals.has(key)) {
+        this.terminals.get(key)!.show();
+      } else {
+        const viewColumn = columns[Math.min(index, columns.length - 1)];
+        this.start(project, service, undefined, { viewColumn });
+      }
+    });
   }
 
   /** Ferma il servizio: chiude il terminale (SIGKILL alla shell e ai figli). */
