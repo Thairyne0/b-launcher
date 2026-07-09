@@ -1,12 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { defaultStorePath, loadStore, StoredProject, StoredService } from "./store";
+import { defaultStorePath, loadStore, readinessCaption, StoredProject, StoredService } from "./store";
 import { ServiceRunner, serviceKey } from "./runner";
 import { scanDirectory } from "./scanner";
 import { ServiceSnapshot, StatusTracker } from "./status";
 import { Node, ServicesTreeProvider } from "./tree";
 import { appendProject } from "./writeStore";
+import { DashboardController, DashboardPanel, ServiceView } from "./dashboard";
 
 /**
  * Estensione completa: lettura services.json + scan workspace + avvio in terminali VSCode
@@ -45,6 +46,46 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push({ dispose: () => runner.dispose() });
   context.subscriptions.push({ dispose: () => tracker.dispose() });
   tracker.start();
+
+  // Helper condivisi: risoluzione progetto/servizio dallo store+rilevati.
+  const findProject = (name: string): StoredProject | undefined => {
+    const result = loadStore(storePath);
+    return (result.ok ? result.projects.find((p) => p.name === name) : undefined)
+      ?? detectedProjects.find((p) => p.name === name);
+  };
+  const findService = (projectName: string, serviceName: string) => {
+    const project = findProject(projectName);
+    const service = project?.services.find((s) => s.name === serviceName);
+    return project && service ? { project, service } : undefined;
+  };
+
+  // Controller della dashboard webview: espone stato + azioni al pannello.
+  const dashboardController: DashboardController = {
+    onDidChange: tracker.onDidChange,
+    getServices(projectName): ServiceView[] {
+      const project = findProject(projectName);
+      if (!project) return [];
+      return project.services.map((service) => {
+        const key = serviceKey(projectName, service.name);
+        return {
+          name: service.name,
+          status: tracker.status(key),
+          readiness: readinessCaption(service.readiness),
+          alive: runner.state(key) === "running",
+          hasUrl: !!service.appURL,
+        };
+      });
+    },
+    start: (pn, sn) => { const f = findService(pn, sn); if (f) runner.start(f.project, f.service); },
+    stop: (pn, sn) => runner.stop(serviceKey(pn, sn)),
+    restart: (pn, sn) => { const f = findService(pn, sn); if (f) runner.restart(f.project, f.service); },
+    openTerminal: (pn, sn) => runner.reveal(serviceKey(pn, sn)),
+    openBrowser: (pn, sn) => { const f = findService(pn, sn); if (f?.service.appURL) openUrl(f.service.appURL); },
+    sendInput: (pn, sn, text) => runner.sendText(serviceKey(pn, sn), text),
+    startAll: (pn) => { const p = findProject(pn); if (p) p.services.forEach((s) => runner.start(p, s)); },
+    stopAll: (pn) => { const p = findProject(pn); if (p) p.services.forEach((s) => runner.stop(serviceKey(pn, s.name))); },
+    startStack: (pn) => vscode.commands.executeCommand("backendLauncher.startStack", { kind: "project", project: findProject(pn) }),
+  };
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider("backendLauncherServices", provider),
@@ -98,8 +139,12 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }),
 
-    // Dashboard: tutti i terminali del progetto affiancati nell'area editor.
+    // Dashboard: pannello "mission control" del progetto (card per servizio, controlli).
     vscode.commands.registerCommand("backendLauncher.openProjectDashboard", (node?: Node) => {
+      withProject(node, storePath, (project) => DashboardPanel.show(dashboardController, project.name));
+    }),
+    // Alternativa: i terminali PTY veri del progetto affiancati nell'area editor.
+    vscode.commands.registerCommand("backendLauncher.openProjectTerminals", (node?: Node) => {
       withProject(node, storePath, (project) => runner.openProjectDashboard(project));
     }),
 

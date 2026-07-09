@@ -40,7 +40,8 @@
       { "command": "backendLauncher.startProject", "title": "Avvia progetto", "icon": "$(play)" },
       { "command": "backendLauncher.stopProject", "title": "Ferma progetto", "icon": "$(debug-stop)" },
       { "command": "backendLauncher.restartProject", "title": "Riavvia progetto", "icon": "$(debug-restart)" },
-      { "command": "backendLauncher.openProjectDashboard", "title": "Apri tutti i terminali", "icon": "$(multiple-windows)" },
+      { "command": "backendLauncher.openProjectDashboard", "title": "Apri dashboard", "icon": "$(dashboard)" },
+      { "command": "backendLauncher.openProjectTerminals", "title": "Apri terminali affiancati", "icon": "$(split-horizontal)" },
       { "command": "backendLauncher.startStack", "title": "Avvia stack (app per ultima)", "icon": "$(rocket)" },
       { "command": "backendLauncher.openAppUrl", "title": "Apri nel browser", "icon": "$(globe)" },
       { "command": "backendLauncher.saveDetectedProject", "title": "Salva progetto in Backend Launcher", "icon": "$(save)" },
@@ -67,9 +68,16 @@
         { "command": "backendLauncher.stopProject", "when": "view == backendLauncherServices && viewItem =~ /^(project|detected)\\.running/", "group": "inline@3" },
         { "command": "backendLauncher.startStack", "when": "view == backendLauncherServices && viewItem =~ /^(project|detected)/", "group": "prj@1" },
         { "command": "backendLauncher.restartProject", "when": "view == backendLauncherServices && viewItem =~ /^(project|detected)\\.running/", "group": "prj@2" },
-        { "command": "backendLauncher.saveDetectedProject", "when": "view == backendLauncherServices && viewItem =~ /^detected/", "group": "prj@3" }
+        { "command": "backendLauncher.openProjectTerminals", "when": "view == backendLauncherServices && viewItem =~ /^(project|detected)/", "group": "prj@3" },
+        { "command": "backendLauncher.saveDetectedProject", "when": "view == backendLauncherServices && viewItem =~ /^detected/", "group": "prj@4" }
       ]
-    }
+    },
+    "viewsWelcome": [
+      {
+        "view": "backendLauncherServices",
+        "contents": "Nessun backend qui ancora.\n\nApri una cartella con dei progetti e scansionala, oppure configurali nell'app Backend Launcher.\n\n[$(search) Scansiona la cartella corrente](command:backendLauncher.scanWorkspace)\n[$(refresh) Aggiorna](command:backendLauncher.refresh)"
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.js",

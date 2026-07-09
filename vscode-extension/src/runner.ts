@@ -113,6 +113,11 @@ export class ServiceRunner {
     this.terminals.get(key)?.show();
   }
 
+  /** Invia testo allo stdin del terminale del servizio (dalla dashboard). */
+  sendText(key: string, text: string): void {
+    this.terminals.get(key)?.sendText(text, true);
+  }
+
   dispose(): void {
     for (const terminal of this.terminals.values()) terminal.dispose();
     this.terminals.clear();

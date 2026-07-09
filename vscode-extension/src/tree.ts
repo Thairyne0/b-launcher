@@ -131,14 +131,7 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
       nodes.push({ kind: "project", project, detected: true });
     }
 
-    if (nodes.length === 0) {
-      const text = result.ok
-        ? "Nessun backend — apri una cartella con dei progetti, o configura l'app Backend Launcher"
-        : result.reason === "missing"
-          ? "Nessun backend configurato — apri una cartella da scansionare, o usa l'app nativa"
-          : result.message;
-      return [{ kind: "message", text }];
-    }
+    // Vuoto → nessun nodo: lascia spazio alla viewsWelcome (bottoni azione) del manifest.
     return nodes;
   }
 }
