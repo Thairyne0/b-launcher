@@ -3,6 +3,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { defaultStorePath, loadStore, StoredProject, StoredService } from "./store";
 import { ServiceRunner, serviceKey } from "./runner";
+import { scanDirectory } from "./scanner";
 import { Node, ServicesTreeProvider } from "./tree";
 
 /**
@@ -59,9 +60,52 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       });
     }),
+
+    vscode.commands.registerCommand("backendLauncher.scanWorkspace", () => {
+      const detected = scanWorkspace();
+      provider.setDetected(detected);
+      const total = detected.reduce((n, p) => n + p.services.length, 0);
+      vscode.window.showInformationMessage(
+        total > 0
+          ? `Rilevati ${total} backend nel workspace.`
+          : "Nessun backend rilevato nelle cartelle aperte.",
+      );
+    }),
   );
 
+  // Scan automatico all'avvio: se il workspace aperto non è già coperto dai progetti
+  // configurati, mostra i backend rilevati (effimeri, avviabili subito).
+  const auto = scanWorkspace();
+  if (auto.length > 0 && !workspaceAlreadyConfigured(storePath)) {
+    provider.setDetected(auto);
+  }
+
   watchStore(storePath, () => provider.refresh(), context);
+}
+
+/** Scandisce ogni cartella aperta nel workspace VSCode; una per progetto "rilevato". */
+function scanWorkspace(): StoredProject[] {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const projects: StoredProject[] = [];
+  for (const folder of folders) {
+    const services = scanDirectory(folder.uri.fsPath);
+    if (services.length > 0) {
+      projects.push({ name: folder.name, services });
+    }
+  }
+  return projects;
+}
+
+/** Vero se almeno un servizio configurato vive dentro una cartella del workspace: in tal
+ *  caso l'utente ha già configurato questo progetto nell'app nativa, niente scan automatico. */
+function workspaceAlreadyConfigured(storePath: string): boolean {
+  const result = loadStore(storePath);
+  if (!result.ok) return false;
+  const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+  if (folders.length === 0) return false;
+  return result.projects.some((p) =>
+    p.services.some((s) => folders.some((f) => s.directory.startsWith(f))),
+  );
 }
 
 export function deactivate(): void {

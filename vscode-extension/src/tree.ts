@@ -9,8 +9,8 @@ import { ServiceRunner, serviceKey } from "./runner";
 
 /** Nodo dell'albero: un progetto, un servizio, o una riga-messaggio (stato vuoto/errore). */
 export type Node =
-  | { kind: "project"; project: StoredProject }
-  | { kind: "service"; project: StoredProject; service: StoredService }
+  | { kind: "project"; project: StoredProject; detected?: boolean }
+  | { kind: "service"; project: StoredProject; service: StoredService; detected?: boolean }
   | { kind: "message"; text: string };
 
 /**
@@ -21,6 +21,9 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
   private readonly emitter = new vscode.EventEmitter<Node | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
 
+  /** Progetti "rilevati" nel workspace VSCode (scan effimero, non salvati nel services.json). */
+  private detectedProjects: StoredProject[] = [];
+
   constructor(
     private readonly runner: ServiceRunner,
     private readonly storePath?: string,
@@ -28,6 +31,12 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
 
   refresh(): void {
     this.emitter.fire(undefined);
+  }
+
+  /** Imposta i progetti rilevati dallo scan del workspace (mostrati sotto quelli configurati). */
+  setDetected(projects: StoredProject[]): void {
+    this.detectedProjects = projects;
+    this.refresh();
   }
 
   getTreeItem(node: Node): vscode.TreeItem {
@@ -42,12 +51,19 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
           node.project.name,
           vscode.TreeItemCollapsibleState.Expanded,
         );
-        item.iconPath = new vscode.ThemeIcon("folder");
         const running = node.project.services.filter(
           (s) => this.runner.state(serviceKey(node.project.name, s.name)) === "running",
         ).length;
-        item.contextValue = running > 0 ? "project.running" : "project.stopped";
-        item.description = `${running}/${node.project.services.length}`;
+        if (node.detected) {
+          item.iconPath = new vscode.ThemeIcon("search");
+          item.contextValue = running > 0 ? "detected.running" : "detected.stopped";
+          item.description = `rilevati · ${running}/${node.project.services.length}`;
+          item.tooltip = "Backend rilevati in questa cartella (non salvati). \"Salva progetto\" per tenerli.";
+        } else {
+          item.iconPath = new vscode.ThemeIcon("folder");
+          item.contextValue = running > 0 ? "project.running" : "project.stopped";
+          item.description = `${running}/${node.project.services.length}`;
+        }
         return item;
       }
       case "service": {
@@ -76,23 +92,31 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
         kind: "service" as const,
         project: node.project,
         service,
+        detected: node.detected,
       }));
     }
     if (node) return []; // i servizi non hanno figli
 
-    // radice: carica dallo store.
+    // radice: progetti configurati (da services.json) + progetti rilevati nel workspace.
+    const nodes: Node[] = [];
     const result = loadStore(this.storePath);
-    if (!result.ok) {
-      return [{
-        kind: "message",
-        text: result.reason === "missing"
-          ? "services.json non trovato — apri e configura l'app Backend Launcher"
-          : result.message,
-      }];
+    if (result.ok) {
+      for (const project of result.projects) {
+        nodes.push({ kind: "project", project });
+      }
     }
-    if (result.projects.length === 0) {
-      return [{ kind: "message", text: "Nessun progetto — creane uno nell'app Backend Launcher" }];
+    for (const project of this.detectedProjects) {
+      nodes.push({ kind: "project", project, detected: true });
     }
-    return result.projects.map((project) => ({ kind: "project" as const, project }));
+
+    if (nodes.length === 0) {
+      const text = result.ok
+        ? "Nessun backend — apri una cartella con dei progetti, o configura l'app Backend Launcher"
+        : result.reason === "missing"
+          ? "Nessun backend configurato — apri una cartella da scansionare, o usa l'app nativa"
+          : result.message;
+      return [{ kind: "message", text }];
+    }
+    return nodes;
   }
 }
