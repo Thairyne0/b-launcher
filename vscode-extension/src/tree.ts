@@ -5,6 +5,7 @@ import {
   StoredProject,
   StoredService,
 } from "./store";
+import { ServiceRunner, serviceKey } from "./runner";
 
 /** Nodo dell'albero: un progetto, un servizio, o una riga-messaggio (stato vuoto/errore). */
 export type Node =
@@ -20,7 +21,10 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
   private readonly emitter = new vscode.EventEmitter<Node | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
 
-  constructor(private readonly storePath?: string) {}
+  constructor(
+    private readonly runner: ServiceRunner,
+    private readonly storePath?: string,
+  ) {}
 
   refresh(): void {
     this.emitter.fire(undefined);
@@ -39,19 +43,27 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
           vscode.TreeItemCollapsibleState.Expanded,
         );
         item.iconPath = new vscode.ThemeIcon("folder");
-        item.contextValue = "project";
-        const count = node.project.services.length;
-        item.description = count === 1 ? "1 backend" : `${count} backend`;
+        const running = node.project.services.filter(
+          (s) => this.runner.state(serviceKey(node.project.name, s.name)) === "running",
+        ).length;
+        item.contextValue = running > 0 ? "project.running" : "project.stopped";
+        item.description = `${running}/${node.project.services.length}`;
         return item;
       }
       case "service": {
+        const key = serviceKey(node.project.name, node.service.name);
+        const running = this.runner.state(key) === "running";
         const item = new vscode.TreeItem(
           node.service.name,
           vscode.TreeItemCollapsibleState.None,
         );
-        item.iconPath = new vscode.ThemeIcon("server-process");
-        item.contextValue = "service";
-        item.description = readinessCaption(node.service.readiness);
+        item.iconPath = new vscode.ThemeIcon(
+          "circle-filled",
+          new vscode.ThemeColor(running ? "charts.green" : "disabledForeground"),
+        );
+        item.contextValue = running ? "service.running" : "service.stopped";
+        item.description = readinessCaption(node.service.readiness)
+          + (running ? " · in esecuzione" : "");
         item.tooltip = `${node.service.command}\n${node.service.directory}`;
         return item;
       }

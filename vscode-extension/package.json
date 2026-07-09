@@ -31,19 +31,27 @@
       ]
     },
     "commands": [
-      {
-        "command": "backendLauncher.refresh",
-        "title": "Backend Launcher: Aggiorna",
-        "icon": "$(refresh)"
-      }
+      { "command": "backendLauncher.refresh", "title": "Backend Launcher: Aggiorna", "icon": "$(refresh)" },
+      { "command": "backendLauncher.startService", "title": "Avvia", "icon": "$(play)" },
+      { "command": "backendLauncher.stopService", "title": "Ferma", "icon": "$(debug-stop)" },
+      { "command": "backendLauncher.restartService", "title": "Riavvia", "icon": "$(debug-restart)" },
+      { "command": "backendLauncher.startServiceWith", "title": "Avvia con…", "icon": "$(run-all)" },
+      { "command": "backendLauncher.revealTerminal", "title": "Mostra terminale", "icon": "$(terminal)" },
+      { "command": "backendLauncher.startProject", "title": "Avvia progetto", "icon": "$(play)" },
+      { "command": "backendLauncher.stopProject", "title": "Ferma progetto", "icon": "$(debug-stop)" }
     ],
     "menus": {
       "view/title": [
-        {
-          "command": "backendLauncher.refresh",
-          "when": "view == backendLauncherServices",
-          "group": "navigation"
-        }
+        { "command": "backendLauncher.refresh", "when": "view == backendLauncherServices", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "backendLauncher.startService", "when": "view == backendLauncherServices && viewItem == service.stopped", "group": "inline@1" },
+        { "command": "backendLauncher.stopService", "when": "view == backendLauncherServices && viewItem == service.running", "group": "inline@1" },
+        { "command": "backendLauncher.restartService", "when": "view == backendLauncherServices && viewItem == service.running", "group": "inline@2" },
+        { "command": "backendLauncher.startServiceWith", "when": "view == backendLauncherServices && viewItem =~ /^service/", "group": "svc@1" },
+        { "command": "backendLauncher.revealTerminal", "when": "view == backendLauncherServices && viewItem == service.running", "group": "svc@2" },
+        { "command": "backendLauncher.startProject", "when": "view == backendLauncherServices && viewItem =~ /^project/", "group": "inline@1" },
+        { "command": "backendLauncher.stopProject", "when": "view == backendLauncherServices && viewItem == project.running", "group": "inline@2" }
       ]
     }
   },
