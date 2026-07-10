@@ -8,6 +8,7 @@ import { ServiceSnapshot, StatusTracker } from "./status";
 import { Node, ServicesTreeProvider } from "./tree";
 import { appendProject } from "./writeStore";
 import { DashboardController, DashboardPanel, ServiceView } from "./dashboard";
+import { GitBranchTracker, GitTarget } from "./gitTracker";
 
 /**
  * Estensione completa: lettura services.json + scan workspace + avvio in terminali VSCode
@@ -33,7 +34,27 @@ export function activate(context: vscode.ExtensionContext): void {
     return snapshots;
   });
 
-  const provider = new ServicesTreeProvider(runner, tracker, storePath);
+  // Poller branch git (lento) su tutti i servizi noti.
+  const gitTracker = new GitBranchTracker((): GitTarget[] => {
+    const targets: GitTarget[] = [];
+    const push = (project: StoredProject) => {
+      for (const service of project.services) {
+        if (service.directory) {
+          targets.push({
+            key: serviceKey(project.name, service.name),
+            directory: service.directory,
+            projectName: project.name,
+          });
+        }
+      }
+    };
+    const result = loadStore(storePath);
+    if (result.ok) result.projects.forEach(push);
+    detectedProjects.forEach(push);
+    return targets;
+  });
+
+  const provider = new ServicesTreeProvider(runner, tracker, gitTracker, storePath);
   // `setDetected` aggiorna sia l'albero sia lo snapshot per i probe.
   const setDetected = (projects: StoredProject[]) => {
     detectedProjects = projects;
@@ -45,7 +66,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(tracker.onDidChange(() => provider.refresh()));
   context.subscriptions.push({ dispose: () => runner.dispose() });
   context.subscriptions.push({ dispose: () => tracker.dispose() });
+  context.subscriptions.push(gitTracker.onDidChange(() => provider.refresh()));
+  context.subscriptions.push({ dispose: () => gitTracker.dispose() });
   tracker.start();
+  gitTracker.start();
 
   // Helper condivisi: risoluzione progetto/servizio dallo store+rilevati.
   const findProject = (name: string): StoredProject | undefined => {

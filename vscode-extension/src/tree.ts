@@ -8,6 +8,7 @@ import {
 import { ServiceRunner, serviceKey } from "./runner";
 import { DisplayStatus } from "./probes";
 import { StatusTracker } from "./status";
+import { GitBranchTracker } from "./gitTracker";
 
 function statusColor(status: DisplayStatus): vscode.ThemeColor {
   switch (status) {
@@ -47,6 +48,7 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
   constructor(
     private readonly runner: ServiceRunner,
     private readonly status: StatusTracker,
+    private readonly git: GitBranchTracker,
     private readonly storePath?: string,
   ) {}
 
@@ -101,8 +103,18 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
         // il servizio ha un appURL (mostra "Apri nel browser").
         const urlSuffix = node.service.appURL ? ".url" : "";
         item.contextValue = (alive ? "service.running" : "service.stopped") + urlSuffix;
-        item.description = `${readinessCaption(node.service.readiness)} · ${statusLabel(st)}`;
-        item.tooltip = `${node.service.command}\n${node.service.directory}`;
+
+        const branch = this.git.branch(key);
+        const mismatch = this.git.isMismatch(key);
+        const latency = this.status.latencyMs(key);
+        const parts = [readinessCaption(node.service.readiness), statusLabel(st)];
+        if (latency !== undefined && st === "running") parts.push(`${latency} ms`);
+        if (branch) parts.push(`${mismatch ? "⚠ " : ""}⑂ ${branch}`);
+        item.description = parts.join(" · ");
+        item.tooltip = new vscode.MarkdownString(
+          `\`${node.service.command}\`\n\n${node.service.directory}`
+          + (branch ? `\n\nbranch: **${branch}**${mismatch ? " — ⚠️ diverso dagli altri del progetto" : ""}` : ""),
+        );
         return item;
       }
     }

@@ -16,6 +16,7 @@ export interface ServiceSnapshot {
  */
 export class StatusTracker {
   private statuses = new Map<string, DisplayStatus>();
+  private readonly latencies = new Map<string, number>();
   private readonly changeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changeEmitter.event;
   private timer: NodeJS.Timeout | undefined;
@@ -24,6 +25,11 @@ export class StatusTracker {
 
   status(key: string): DisplayStatus {
     return this.statuses.get(key) ?? "stopped";
+  }
+
+  /** Latenza (ms) dell'ultimo health check HTTP, se disponibile. */
+  latencyMs(key: string): number | undefined {
+    return this.latencies.get(key);
   }
 
   start(intervalMs = 2000): void {
@@ -58,9 +64,14 @@ export class StatusTracker {
       return deriveStatus(alive, readiness, await checkPort(port), undefined);
     }
     // httpHealth: se è nostro serve il 2xx; se non è nostro basta la porta per "external".
-    const httpOk = alive ? (await checkHttp(port, readiness.path ?? "/health")).ok : undefined;
-    const portOpen = alive ? undefined : await checkPort(port);
-    return deriveStatus(alive, readiness, portOpen, httpOk);
+    if (alive) {
+      const probe = await checkHttp(port, readiness.path ?? "/health");
+      if (probe.latencyMs !== undefined) this.latencies.set(snap.key, probe.latencyMs);
+      else this.latencies.delete(snap.key);
+      return deriveStatus(alive, readiness, undefined, probe.ok);
+    }
+    this.latencies.delete(snap.key);
+    return deriveStatus(alive, readiness, await checkPort(port), undefined);
   }
 
   dispose(): void {

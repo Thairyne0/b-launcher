@@ -15,8 +15,12 @@ export function serviceKey(projectName: string, serviceName: string): string {
  */
 export class ServiceRunner {
   private readonly terminals = new Map<string, vscode.Terminal>();
+  private readonly startedAtMs = new Map<string, number>();
   private readonly changeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changeEmitter.event;
+  /** Emesso quando un terminale si chiude da solo (processo morto): per le notifiche. */
+  private readonly closedEmitter = new vscode.EventEmitter<string>();
+  readonly onDidServiceClose = this.closedEmitter.event;
 
   constructor(context: vscode.ExtensionContext) {
     // Se l'utente (o il processo) chiude il terminale, il servizio è fermo.
@@ -25,7 +29,9 @@ export class ServiceRunner {
         for (const [key, terminal] of this.terminals) {
           if (terminal === closed) {
             this.terminals.delete(key);
+            this.startedAtMs.delete(key);
             this.changeEmitter.fire();
+            this.closedEmitter.fire(key);
             break;
           }
         }
@@ -35,6 +41,12 @@ export class ServiceRunner {
 
   state(key: string): RunState {
     return this.terminals.has(key) ? "running" : "stopped";
+  }
+
+  /** Millisecondi dall'avvio del servizio (per l'uptime), o undefined se fermo. */
+  uptimeMs(key: string): number | undefined {
+    const started = this.startedAtMs.get(key);
+    return started === undefined ? undefined : Date.now() - started;
   }
 
   /**
@@ -63,6 +75,7 @@ export class ServiceRunner {
     terminal.show();
     terminal.sendText(commandOverride ?? service.command, true);
     this.terminals.set(key, terminal);
+    this.startedAtMs.set(key, Date.now());
     this.changeEmitter.fire();
   }
 
@@ -93,6 +106,7 @@ export class ServiceRunner {
     const terminal = this.terminals.get(key);
     if (!terminal) return;
     this.terminals.delete(key);
+    this.startedAtMs.delete(key);
     terminal.dispose();
     this.changeEmitter.fire();
   }
@@ -119,8 +133,12 @@ export class ServiceRunner {
   }
 
   dispose(): void {
-    for (const terminal of this.terminals.values()) terminal.dispose();
+    // Svuota PRIMA la mappa: così onDidCloseTerminal non scambia lo shutdown per crash.
+    const terminals = [...this.terminals.values()];
     this.terminals.clear();
+    this.startedAtMs.clear();
+    for (const terminal of terminals) terminal.dispose();
     this.changeEmitter.dispose();
+    this.closedEmitter.dispose();
   }
 }
