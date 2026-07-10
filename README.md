@@ -211,6 +211,11 @@ qualsiasi comando.
 - **Varianti di comando**: comandi alternativi one-shot per servizio
   (es. `flutter run -d iphone` / `-d chrome`, o uno script di debug) nel menu
   contestuale della card, "Avvia con…" — il comando di default resta invariato.
+- **Task (comandi one-shot)**: per servizio puoi definire comandi ausiliari
+  (es. `npx prisma generate`, migrazioni, seed) come "Nome = comando" nel form;
+  compaiono nel menu "Esegui" della card e girano nella cartella del backend
+  (output nel suo terminale), senza avviarlo. Disponibili anche nell'estensione
+  VSCode (girano in un terminale dedicato).
 - Nota Flutter: il terminale del launcher è una pipe senza stdin → niente hot
   reload interattivo da qui; il ciclo di sviluppo resta nell'IDE. Il valore è
   lo stack: un click e tutti i backend sono su e verdi.

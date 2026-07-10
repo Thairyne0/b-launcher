@@ -243,6 +243,19 @@ struct ServiceCardView: View {
                         .disabled(controller.processAlive)
                     }
                 }
+            }
+            if !controller.config.tasks.isEmpty {
+                Menu("Esegui") {
+                    ForEach(controller.config.tasks, id: \.self) { task in
+                        Button(task.name) {
+                            controller.runTask(name: task.name, command: task.command)
+                            withAnimation(.snappy) { showTerminal = true }
+                        }
+                        .help(task.command)
+                    }
+                }
+            }
+            if !controller.config.commandVariants.isEmpty || !controller.config.tasks.isEmpty {
                 Divider()
             }
             Button("Apri directory nel Finder") {

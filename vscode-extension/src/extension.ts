@@ -250,6 +250,22 @@ export function activate(context: vscode.ExtensionContext): void {
       openServiceFiles(node.service.directory);
     }),
 
+    // Esegue un task one-shot del servizio (es. npx prisma generate) in un terminale.
+    vscode.commands.registerCommand("backendLauncher.runTask", async (node?: Node) => {
+      if (node?.kind !== "service") return;
+      const fresh = findService(node.project.name, node.service.name)?.service ?? node.service;
+      const tasks = fresh.tasks ?? [];
+      if (tasks.length === 0) {
+        vscode.window.showInformationMessage(`Nessun task per "${fresh.name}" — aggiungili nell'app nativa.`);
+        return;
+      }
+      const pick = await vscode.window.showQuickPick(
+        tasks.map((t) => ({ label: t.name, description: t.command, task: t })),
+        { placeHolder: "Esegui quale task?" },
+      );
+      if (pick) runner.runTask(fresh, node.project.name, pick.task);
+    }),
+
     // Quick pick globale "Avvia…": scegli un servizio da avviare, senza aprire l'albero.
     vscode.commands.registerCommand("backendLauncher.quickStart", async () => {
       const items: Array<vscode.QuickPickItem & { pn: string; sn: string }> = [];

@@ -21,6 +21,13 @@ struct StoredReadiness: Codable, Hashable {
     var path: String? = nil
 }
 
+/// Comando one-shot associato a un servizio (es. "Genera Prisma" = `npx prisma generate`):
+/// eseguito nella working directory del servizio, non è un modo di avviarlo.
+struct StoredServiceTask: Codable, Hashable {
+    var name: String
+    var command: String
+}
+
 struct StoredService: Codable, Hashable {
     var name: String
     var directory: String          // path assoluto della cartella del servizio
@@ -54,6 +61,9 @@ struct StoredService: Codable, Hashable {
     /// script di debug): menu "Avvia con…" sulla card. Il comando di default resta
     /// invariato. Additivo; esportato nei template.
     var commandVariants: [String]? = nil
+    /// Task one-shot da eseguire nella cartella del servizio (es. `npx prisma generate`,
+    /// migrazioni, seed): menu "Esegui" sulla card. Additivo; esportato nei template.
+    var tasks: [StoredServiceTask]? = nil
 }
 
 struct StoredInfraCheck: Codable, Hashable {
@@ -628,6 +638,7 @@ final class ServiceStore {
             config.appURL = service.appURL
             config.isMainApp = service.isMainApp ?? false
             config.commandVariants = service.commandVariants ?? []
+            config.tasks = service.tasks ?? []
             return config
         }
     }

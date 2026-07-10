@@ -306,6 +306,31 @@ final class ServiceController: Identifiable {
         process.terminate(gracePeriod: AppSettings.killGracePeriodSeconds)
     }
 
+    /// Esegue un comando one-shot (task) nella working directory del servizio, riversando
+    /// l'output nel log del servizio con un banner. Transitorio: NON tocca lo stato del
+    /// servizio (processAlive/status) — è un comando ausiliario (es. `npx prisma generate`),
+    /// non un modo di avviare il backend. Fire-and-forget: SpawnedProcess si auto-mantiene.
+    func runTask(name: String, command: String) {
+        logs.ingest("[launcher] ── task: \(name) (\(command)) ──\n")
+        fileWriter.appendBanner("task: \(name) — \(command)")
+        let cwd = cwdOverride ?? config.workingDirectory.path
+        do {
+            _ = try SpawnedProcess(
+                shellCommand: Self.wrappedShellCommand(for: command),
+                cwd: cwd,
+                onChunk: { [weak self] chunk in
+                    self?.logs.ingest(chunk)
+                    self?.fileWriter.append(chunk)
+                },
+                onExit: { [weak self] code in
+                    self?.logs.ingest("[launcher] ── task \"\(name)\" terminato (exit \(code)) ──\n")
+                }
+            )
+        } catch {
+            logs.ingest("[launcher] errore task \"\(name)\": \(error.localizedDescription)\n")
+        }
+    }
+
     func restart() {
         if processAlive {
             pendingRestart = true

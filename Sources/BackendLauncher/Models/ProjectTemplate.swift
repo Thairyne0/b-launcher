@@ -25,6 +25,7 @@ struct ProjectTemplate: Codable {
         var appURL: String? = nil
         var isMainApp: Bool? = nil
         var commandVariants: [String]? = nil
+        var tasks: [StoredServiceTask]? = nil
     }
 }
 
@@ -76,7 +77,8 @@ enum ProjectTemplateCodec {
                 startAfter: service.startAfter,
                 appURL: service.appURL,
                 isMainApp: service.isMainApp,
-                commandVariants: service.commandVariants
+                commandVariants: service.commandVariants,
+                tasks: service.tasks
             )
         }
         return ProjectTemplate(
@@ -110,7 +112,8 @@ enum ProjectTemplateCodec {
                 startAfter: templateService.startAfter,
                 appURL: templateService.appURL,
                 isMainApp: templateService.isMainApp,
-                commandVariants: templateService.commandVariants
+                commandVariants: templateService.commandVariants,
+                tasks: templateService.tasks
             )
         }
         let name = nameOverride?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false

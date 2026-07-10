@@ -102,7 +102,8 @@ export class ServicesTreeProvider implements vscode.TreeDataProvider<Node> {
         // contextValue pilota i menu: "running/stopped" (terminale nostro) + ".url" se
         // il servizio ha un appURL (mostra "Apri nel browser").
         const urlSuffix = node.service.appURL ? ".url" : "";
-        item.contextValue = (alive ? "service.running" : "service.stopped") + urlSuffix;
+        const taskSuffix = (node.service.tasks?.length ?? 0) > 0 ? ".tasks" : "";
+        item.contextValue = (alive ? "service.running" : "service.stopped") + urlSuffix + taskSuffix;
 
         const branch = this.git.branch(key);
         const mismatch = this.git.isMismatch(key);

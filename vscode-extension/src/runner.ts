@@ -137,6 +137,21 @@ export class ServiceRunner {
     this.terminals.get(key)?.sendText(text, true);
   }
 
+  /**
+   * Esegue un task one-shot (es. `npx prisma generate`) in un terminale VSCode dedicato,
+   * nella cartella del servizio. Non tracciato: è un comando ausiliario, non avvia il
+   * backend.
+   */
+  runTask(service: StoredService, projectName: string, task: { name: string; command: string }): void {
+    const terminal = vscode.window.createTerminal({
+      name: `${task.name} · ${service.name} · ${projectName}`,
+      cwd: service.directory,
+      iconPath: new vscode.ThemeIcon("play-circle"),
+    });
+    terminal.show();
+    terminal.sendText(task.command, true);
+  }
+
   dispose(): void {
     // Svuota PRIMA la mappa: così onDidCloseTerminal non scambia lo shutdown per crash.
     const terminals = [...this.terminals.values()];

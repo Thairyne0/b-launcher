@@ -54,6 +54,8 @@ struct ServiceConfig: Identifiable, Hashable {
     var isMainApp: Bool = false
     /// Comandi alternativi one-shot (menu "Avvia con…" sulla card).
     var commandVariants: [String] = []
+    /// Task one-shot da eseguire nella cartella del servizio (menu "Esegui" sulla card).
+    var tasks: [StoredServiceTask] = []
 
     /// Namespaced su `projectName` quando presente ("Progetto/nome"), altrimenti il nome
     /// nudo — questo mantiene `id == name` per ogni config costruita senza `projectName`

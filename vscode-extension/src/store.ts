@@ -14,6 +14,11 @@ export interface StoredReadiness {
   path?: string;
 }
 
+export interface StoredServiceTask {
+  name: string;
+  command: string;
+}
+
 export interface StoredService {
   name: string;
   directory: string;
@@ -23,6 +28,7 @@ export interface StoredService {
   isMainApp?: boolean;
   commandVariants?: string[];
   startAfter?: string[];
+  tasks?: StoredServiceTask[];
 }
 
 export interface StoredInfraCheck {
@@ -118,6 +124,14 @@ function normalizeService(value: unknown): StoredService | null {
   }
   if (Array.isArray(obj.startAfter)) {
     service.startAfter = obj.startAfter.filter((v): v is string => typeof v === "string");
+  }
+  if (Array.isArray(obj.tasks)) {
+    service.tasks = obj.tasks
+      .filter((t): t is { name: string; command: string } =>
+        typeof t === "object" && t !== null
+        && typeof (t as { name?: unknown }).name === "string"
+        && typeof (t as { command?: unknown }).command === "string")
+      .map((t) => ({ name: t.name, command: t.command }));
   }
   return service;
 }

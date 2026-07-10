@@ -57,6 +57,7 @@
       { "command": "backendLauncher.stopAll", "title": "Backend Launcher: Ferma tutti", "icon": "$(stop-circle)" },
       { "command": "backendLauncher.scanWorkspace", "title": "Backend Launcher: Scansiona la cartella corrente", "icon": "$(search)" },
       { "command": "backendLauncher.openServiceFiles", "title": "Apri file del backend", "icon": "$(go-to-file)" },
+      { "command": "backendLauncher.runTask", "title": "Esegui task…", "icon": "$(play-circle)" },
       { "command": "backendLauncher.quickStart", "title": "Backend Launcher: Avvia un backend…", "icon": "$(rocket)" }
     ],
     "keybindings": [
@@ -76,6 +77,7 @@
         { "command": "backendLauncher.openAppUrl", "when": "view == backendLauncherServices && viewItem =~ /^service.*\\.url/", "group": "inline@3" },
         { "command": "backendLauncher.startServiceWith", "when": "view == backendLauncherServices && viewItem =~ /^service/", "group": "svc@1" },
         { "command": "backendLauncher.revealTerminal", "when": "view == backendLauncherServices && viewItem =~ /^service\\.running/", "group": "svc@2" },
+        { "command": "backendLauncher.runTask", "when": "view == backendLauncherServices && viewItem =~ /^service.*\\.tasks/", "group": "svc@1" },
         { "command": "backendLauncher.openServiceFiles", "when": "view == backendLauncherServices && viewItem =~ /^service/", "group": "svc@3" },
         { "command": "backendLauncher.openProjectDashboard", "when": "view == backendLauncherServices && viewItem =~ /^(project|detected)/", "group": "inline@1" },
         { "command": "backendLauncher.startProject", "when": "view == backendLauncherServices && viewItem =~ /^(project|detected)/", "group": "inline@2" },

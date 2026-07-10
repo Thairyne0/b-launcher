@@ -150,6 +150,20 @@ private func fakeConfig(command: String) -> ServiceConfig {
         #expect(c.inputHistory.isEmpty)
     }
 
+    @Test func runTaskExecutesAndLogsOutputWithoutChangingStatus() async throws {
+        let config = ServiceConfig(name: "fake", directory: "", command: "sleep 60",
+                                   readiness: .processAlive)
+        let c = ServiceController(config: config, cwd: "/tmp")
+        // Il servizio NON è avviato: il task gira comunque e non lo rende "vivo".
+        c.runTask(name: "Genera Prisma", command: "echo prisma-fatto")
+        let seen = await waitUntil { c.logs.lines.contains { $0.text.contains("prisma-fatto") } }
+        #expect(seen)
+        #expect(!c.processAlive)
+        #expect(c.status == .stopped)
+        let banner = await waitUntil { c.logs.lines.contains { $0.text.contains("task: Genera Prisma") } }
+        #expect(banner)
+    }
+
     @Test func startWithCommandOverrideRunsVariantOnce() async throws {
         // L'override vale per QUELLO spawn: il comando di default resta in config.
         let config = ServiceConfig(name: "fake", directory: "", command: "echo default && sleep 60",

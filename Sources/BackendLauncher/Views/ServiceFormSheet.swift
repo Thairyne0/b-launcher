@@ -72,6 +72,7 @@ struct ServiceFormSheet: View {
     @State private var appURLText: String = ""
     @State private var isMainApp = false
     @State private var variantsText: String = ""
+    @State private var tasksText: String = ""
     @State private var saveError: String?
     /// Evita di mostrare "il nome non può essere vuoto" prima ancora che l'utente abbia
     /// interagito col form (fastidioso in modalità "add" a sheet appena aperta).
@@ -198,6 +199,15 @@ struct ServiceFormSheet: View {
                     .textFieldStyle(.roundedBorder)
                     .font(.callout)
                 Text("Le varianti compaiono nel menu contestuale della card (\"Avvia con…\") e valgono per il singolo avvio.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("Task (uno per riga: Nome = comando) — es. Genera Prisma = npx prisma generate",
+                          text: $tasksText, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout)
+                    .lineLimit(1...4)
+                Text("I task sono comandi one-shot eseguiti nella cartella del backend (menu \"Esegui\" sulla card). Non avviano il servizio.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -419,6 +429,9 @@ struct ServiceFormSheet: View {
         appURLText = service.appURL ?? ""
         isMainApp = service.isMainApp ?? false
         variantsText = (service.commandVariants ?? []).joined(separator: "; ")
+        tasksText = (service.tasks ?? [])
+            .map { "\($0.name) = \($0.command)" }
+            .joined(separator: "\n")
     }
 
     /// Varianti dal campo testo: separate da ";", trim, vuote scartate.
@@ -426,6 +439,19 @@ struct ServiceFormSheet: View {
         variantsText.split(separator: ";")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    /// Task dal campo testo: una riga "Nome = comando" per task; righe senza "=" o con
+    /// nome/comando vuoto vengono scartate.
+    private var parsedTasks: [StoredServiceTask] {
+        tasksText.split(separator: "\n").compactMap { rawLine in
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard let eq = line.firstIndex(of: "=") else { return nil }
+            let name = line[line.startIndex..<eq].trimmingCharacters(in: .whitespaces)
+            let command = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, !command.isEmpty else { return nil }
+            return StoredServiceTask(name: name, command: command)
+        }
     }
 
     /// Picker per il file env alternativo (file nascosti visibili: .env.* iniziano col punto).
@@ -469,7 +495,8 @@ struct ServiceFormSheet: View {
                                         ? nil
                                         : appURLText.trimmingCharacters(in: .whitespacesAndNewlines),
                                     isMainApp: isMainApp ? true : nil,
-                                    commandVariants: parsedVariants.isEmpty ? nil : parsedVariants)
+                                    commandVariants: parsedVariants.isEmpty ? nil : parsedVariants,
+                                    tasks: parsedTasks.isEmpty ? nil : parsedTasks)
         do {
             switch mode {
             case .add:
