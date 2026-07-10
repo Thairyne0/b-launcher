@@ -49,6 +49,11 @@ export class ServiceRunner {
     return started === undefined ? undefined : Date.now() - started;
   }
 
+  /** Epoch ms d'avvio del servizio (il webview calcola l'uptime live), o undefined. */
+  startedAt(key: string): number | undefined {
+    return this.startedAtMs.get(key);
+  }
+
   /**
    * Avvia il servizio (o `commandOverride`) in un terminale dedicato. `location` permette
    * di aprirlo nell'area editor a una colonna specifica (per la dashboard "tutti i

@@ -61,12 +61,15 @@ export function activate(context: vscode.ExtensionContext): void {
     provider.setDetected(projects);
   };
 
-  // Stato terminali o probe cambiano → ridisegna l'albero.
-  context.subscriptions.push(runner.onDidChange(() => { void tracker.pollOnce(); provider.refresh(); }));
-  context.subscriptions.push(tracker.onDidChange(() => provider.refresh()));
+  // Evento UI unificato: stato/branch/run cambiano → albero + dashboard.
+  const uiChange = new vscode.EventEmitter<void>();
+  context.subscriptions.push(uiChange);
+  const onUi = () => { provider.refresh(); uiChange.fire(); };
+  context.subscriptions.push(runner.onDidChange(() => { void tracker.pollOnce(); onUi(); }));
+  context.subscriptions.push(tracker.onDidChange(onUi));
   context.subscriptions.push({ dispose: () => runner.dispose() });
   context.subscriptions.push({ dispose: () => tracker.dispose() });
-  context.subscriptions.push(gitTracker.onDidChange(() => provider.refresh()));
+  context.subscriptions.push(gitTracker.onDidChange(onUi));
   context.subscriptions.push({ dispose: () => gitTracker.dispose() });
   tracker.start();
   gitTracker.start();
@@ -85,7 +88,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Controller della dashboard webview: espone stato + azioni al pannello.
   const dashboardController: DashboardController = {
-    onDidChange: tracker.onDidChange,
+    onDidChange: uiChange.event,
+    getAccent: (projectName) => findProject(projectName)?.accentColorHex,
     getServices(projectName): ServiceView[] {
       const project = findProject(projectName);
       if (!project) return [];
@@ -97,6 +101,10 @@ export function activate(context: vscode.ExtensionContext): void {
           readiness: readinessCaption(service.readiness),
           alive: runner.state(key) === "running",
           hasUrl: !!service.appURL,
+          latencyMs: tracker.latencyMs(key),
+          startedAtMs: runner.startedAt(key),
+          branch: gitTracker.branch(key),
+          mismatch: gitTracker.isMismatch(key),
         };
       });
     },
@@ -235,7 +243,44 @@ export function activate(context: vscode.ExtensionContext): void {
           : "Nessun backend rilevato nelle cartelle aperte.",
       );
     }),
+
+    // Apre il file di config principale del servizio (package.json, pubspec.yaml, …).
+    vscode.commands.registerCommand("backendLauncher.openServiceFiles", (node?: Node) => {
+      if (node?.kind !== "service") return;
+      openServiceFiles(node.service.directory);
+    }),
+
+    // Quick pick globale "Avvia…": scegli un servizio da avviare, senza aprire l'albero.
+    vscode.commands.registerCommand("backendLauncher.quickStart", async () => {
+      const items: Array<vscode.QuickPickItem & { pn: string; sn: string }> = [];
+      forAllProjects(storePath, detectedProjects, (project) => {
+        for (const service of project.services) {
+          const key = serviceKey(project.name, service.name);
+          items.push({
+            label: `$(server-process) ${service.name}`,
+            description: project.name,
+            detail: `${readinessCaption(service.readiness)} · ${tracker.status(key)}`,
+            pn: project.name,
+            sn: service.name,
+          });
+        }
+      });
+      if (items.length === 0) { vscode.window.showInformationMessage("Nessun backend configurato."); return; }
+      const pick = await vscode.window.showQuickPick(items, { placeHolder: "Avvia quale backend?" });
+      if (pick) { const f = findService(pick.pn, pick.sn); if (f) runner.start(f.project, f.service); }
+    }),
   );
+
+  // Notifica quando un servizio si ferma da solo (processo morto / terminale chiuso).
+  context.subscriptions.push(runner.onDidServiceClose(async (key) => {
+    const name = key.split("/").pop() ?? key;
+    const choice = await vscode.window.showWarningMessage(`Backend "${name}" si è fermato.`, "Riavvia");
+    if (choice === "Riavvia") {
+      const [pn, sn] = splitKey(key);
+      const f = findService(pn, sn);
+      if (f) runner.start(f.project, f.service);
+    }
+  }));
 
   // Status bar: stato aggregato, click → apre la view.
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -267,6 +312,26 @@ export function activate(context: vscode.ExtensionContext): void {
 
 function openUrl(url: string): void {
   vscode.env.openExternal(vscode.Uri.parse(url));
+}
+
+/** "Progetto/nome" → [progetto, nome] (il nome può contenere "/"? no: gli id non lo fanno). */
+function splitKey(key: string): [string, string] {
+  const idx = key.indexOf("/");
+  return idx < 0 ? [key, ""] : [key.slice(0, idx), key.slice(idx + 1)];
+}
+
+/** Apre il primo file di config noto nella cartella del servizio; se nessuno, la rivela. */
+function openServiceFiles(directory: string): void {
+  const candidates = ["package.json", "pubspec.yaml", "go.mod", "Cargo.toml",
+    "pyproject.toml", "requirements.txt", "pom.xml", "composer.json", "docker-compose.yml"];
+  for (const file of candidates) {
+    const full = path.join(directory, file);
+    if (fs.existsSync(full)) {
+      vscode.window.showTextDocument(vscode.Uri.file(full), { preview: false });
+      return;
+    }
+  }
+  vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(directory));
 }
 
 async function confirm(message: string, action: string): Promise<boolean> {

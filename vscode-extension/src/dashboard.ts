@@ -8,10 +8,16 @@ export interface ServiceView {
   readiness: string;
   alive: boolean;
   hasUrl: boolean;
+  latencyMs?: number;
+  /** Epoch ms d'avvio: il webview calcola l'uptime live ogni secondo. */
+  startedAtMs?: number;
+  branch?: string;
+  mismatch?: boolean;
 }
 
 export interface DashboardController {
   getServices(projectName: string): ServiceView[];
+  getAccent(projectName: string): string | undefined;
   onDidChange: vscode.Event<void>;
   start(projectName: string, serviceName: string): void;
   stop(projectName: string, serviceName: string): void;
@@ -91,6 +97,7 @@ export class DashboardPanel {
     this.panel.webview.postMessage({
       type: "state",
       project: this.projectName,
+      accent: this.controller.getAccent(this.projectName),
       services: this.controller.getServices(this.projectName),
     });
   }
@@ -108,9 +115,10 @@ export class DashboardPanel {
 </head>
 <body>
   <header class="topbar">
-    <div class="title"><span class="dot-brand"></span><span id="projectName">—</span></div>
+    <div class="title"><span class="dot-brand" id="brand"></span><span id="projectName">—</span><span class="count" id="count"></span></div>
     <div class="actions">
-      <button class="btn primary" data-global="startStack">Avvia stack</button>
+      <input id="filter" class="filter" placeholder="Filtra…" />
+      <button class="btn primary" data-global="startStack">▶ Avvia stack</button>
       <button class="btn" data-global="startAll">Avvia tutti</button>
       <button class="btn danger" data-global="stopAll">Ferma tutti</button>
     </div>
@@ -134,7 +142,7 @@ function makeNonce(): string {
 }
 
 const STYLE = /* css */ `
-:root { color-scheme: light dark; }
+:root { color-scheme: light dark; --accent: var(--vscode-textLink-foreground); }
 * { box-sizing: border-box; }
 body {
   margin: 0; padding: 0;
@@ -147,53 +155,68 @@ body {
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px; padding: 14px 20px;
-  background: var(--vscode-editor-background);
+  background: color-mix(in srgb, var(--accent) 6%, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 .title { display: flex; align-items: center; gap: 10px; font-size: 1.25em; font-weight: 600; }
-.dot-brand { width: 10px; height: 10px; border-radius: 3px; background: var(--vscode-textLink-foreground); }
-.actions { display: flex; gap: 8px; }
+.dot-brand { width: 11px; height: 11px; border-radius: 3px; background: var(--accent); box-shadow: 0 0 10px 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+.count { font-size: .62em; opacity: .6; font-weight: 500; }
+.actions { display: flex; gap: 8px; align-items: center; }
+.filter {
+  font: inherit; font-size: .85em; width: 140px;
+  padding: 5px 10px; border-radius: 7px;
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+}
 .grid {
   display: grid; gap: 16px; padding: 20px;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
 }
 .card {
-  display: flex; flex-direction: column; gap: 12px;
-  padding: 16px; border-radius: 12px;
+  display: flex; flex-direction: column; gap: 11px;
+  padding: 16px; border-radius: 14px;
   background: var(--vscode-editorWidget-background, rgba(127,127,127,0.06));
   border: 1px solid var(--vscode-panel-border);
-  transition: border-color .15s ease, transform .15s ease;
+  border-left: 3px solid var(--vscode-panel-border);
+  transition: border-color .15s ease, transform .12s ease, box-shadow .15s ease;
+  animation: pop .18s ease both;
 }
-.card:hover { border-color: var(--vscode-focusBorder); }
+@keyframes pop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.card:hover { border-color: var(--vscode-focusBorder); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.card.running { border-left-color: #3fb950; }
+.card.starting { border-left-color: #d6a52a; }
+.card.external { border-left-color: #4a8cff; }
 .card-head { display: flex; align-items: center; gap: 10px; }
-.dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 3px transparent; }
-.dot.running { background: #3fb950; box-shadow: 0 0 8px 1px rgba(63,185,80,.5); }
-.dot.starting { background: #d6a52a; }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+.dot.running { background: #3fb950; box-shadow: 0 0 8px 1px rgba(63,185,80,.55); }
+.dot.starting { background: #d6a52a; animation: pulse 1s ease-in-out infinite; }
 .dot.external { background: #4a8cff; }
 .dot.stopped { background: var(--vscode-disabledForeground); }
-.name { font-weight: 600; font-size: 1.05em; }
-.meta { margin-left: auto; font-size: .82em; opacity: .75; }
-.status-line { font-size: .85em; opacity: .85; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.name { font-weight: 600; font-size: 1.06em; }
+.meta { margin-left: auto; font-size: .82em; opacity: .8; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; font-size: .78em; }
+.chip { padding: 2px 8px; border-radius: 20px; background: rgba(127,127,127,.14); opacity: .95; }
+.chip.warn { background: rgba(214,165,42,.2); color: #d6a52a; }
 .controls { display: flex; gap: 6px; flex-wrap: wrap; }
 .btn {
   font: inherit; font-size: .85em; cursor: pointer;
-  padding: 5px 12px; border-radius: 7px;
+  padding: 5px 12px; border-radius: 8px;
   border: 1px solid var(--vscode-button-border, transparent);
   background: var(--vscode-button-secondaryBackground, rgba(127,127,127,.15));
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  transition: background .12s ease;
 }
 .btn:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(127,127,127,.28)); }
 .btn.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: transparent; }
 .btn.primary:hover { background: var(--vscode-button-hoverBackground); }
 .btn.danger { background: transparent; color: #f07171; border-color: rgba(240,113,113,.4); }
 .btn.danger:hover { background: rgba(240,113,113,.12); }
-.btn:disabled { opacity: .4; cursor: default; }
 .cmd { display: flex; gap: 6px; }
 .cmd input {
   flex: 1; font: inherit; font-size: .85em;
-  padding: 5px 10px; border-radius: 7px;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
+  padding: 5px 10px; border-radius: 8px;
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
 }
 .cmd input::placeholder { color: var(--vscode-input-placeholderForeground); }
@@ -204,26 +227,41 @@ const SCRIPT = /* js */ `
 const vscode = acquireVsCodeApi();
 const grid = document.getElementById('grid');
 const projectName = document.getElementById('projectName');
+const countEl = document.getElementById('count');
+const filterEl = document.getElementById('filter');
 
 document.querySelectorAll('[data-global]').forEach((b) => {
   b.addEventListener('click', () => vscode.postMessage({ type: b.dataset.global }));
 });
 
 const LABEL = { running: 'in esecuzione', starting: 'avvio…', external: 'esterno', stopped: 'fermo' };
+const ORDER = { running: 0, starting: 1, external: 2, stopped: 3 };
+let current = [];
+let filter = '';
+
+filterEl.addEventListener('input', () => { filter = filterEl.value.toLowerCase(); render(); });
 
 window.addEventListener('message', (e) => {
   const msg = e.data;
   if (msg.type !== 'state') return;
   projectName.textContent = msg.project;
-  render(msg.services);
+  if (msg.accent) document.documentElement.style.setProperty('--accent', msg.accent);
+  current = msg.services;
+  render();
 });
 
-function render(services) {
+function render() {
+  const services = current
+    .filter((s) => !filter || s.name.toLowerCase().includes(filter))
+    .slice()
+    .sort((a, b) => (ORDER[a.status] - ORDER[b.status]) || a.name.localeCompare(b.name));
+  const active = current.filter((s) => s.status === 'running' || s.status === 'starting').length;
+  countEl.textContent = active + '/' + current.length + ' attivi';
   grid.innerHTML = '';
   if (!services.length) {
     const d = document.createElement('div');
     d.className = 'empty';
-    d.textContent = 'Nessun servizio in questo progetto.';
+    d.textContent = filter ? 'Nessun servizio corrisponde al filtro.' : 'Nessun servizio in questo progetto.';
     grid.appendChild(d);
     return;
   }
@@ -232,33 +270,33 @@ function render(services) {
 
 function card(s) {
   const el = document.createElement('div');
-  el.className = 'card';
+  el.className = 'card ' + s.status;
 
   const head = document.createElement('div');
   head.className = 'card-head';
-  head.innerHTML =
-    '<span class="dot ' + s.status + '"></span>' +
-    '<span class="name"></span>' +
-    '<span class="meta"></span>';
+  head.innerHTML = '<span class="dot ' + s.status + '"></span><span class="name"></span><span class="meta"></span>';
   head.querySelector('.name').textContent = s.name;
   head.querySelector('.meta').textContent = LABEL[s.status] || s.status;
   el.appendChild(head);
 
-  const status = document.createElement('div');
-  status.className = 'status-line';
-  status.textContent = s.readiness;
-  el.appendChild(status);
+  const chips = document.createElement('div');
+  chips.className = 'chips';
+  chips.appendChild(chip(s.readiness));
+  if (typeof s.latencyMs === 'number' && s.status === 'running') chips.appendChild(chip(s.latencyMs + ' ms'));
+  if (s.startedAtMs) { const u = chip(''); u.dataset.uptime = String(s.startedAtMs); chips.appendChild(u); }
+  if (s.branch) chips.appendChild(chip('⑂ ' + s.branch, s.mismatch));
+  el.appendChild(chips);
 
   const controls = document.createElement('div');
   controls.className = 'controls';
   if (s.alive) {
-    controls.appendChild(btn('Ferma', 'stop', s.name, 'danger'));
-    controls.appendChild(btn('Riavvia', 'restart', s.name));
+    controls.appendChild(btn('■ Ferma', 'stop', s.name, 'danger'));
+    controls.appendChild(btn('↻ Riavvia', 'restart', s.name));
     controls.appendChild(btn('Terminale', 'terminal', s.name));
   } else {
-    controls.appendChild(btn('Avvia', 'start', s.name, 'primary'));
+    controls.appendChild(btn('▶ Avvia', 'start', s.name, 'primary'));
   }
-  if (s.hasUrl) controls.appendChild(btn('Browser', 'browser', s.name));
+  if (s.hasUrl) controls.appendChild(btn('🌐 Browser', 'browser', s.name));
   el.appendChild(controls);
 
   if (s.alive) {
@@ -267,20 +305,23 @@ function card(s) {
     const input = document.createElement('input');
     input.placeholder = 'Invia allo stdin…';
     input.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' && input.value) {
-        vscode.postMessage({ type: 'send', service: s.name, text: input.value });
-        input.value = '';
-      }
+      if (ev.key === 'Enter' && input.value) { vscode.postMessage({ type: 'send', service: s.name, text: input.value }); input.value = ''; }
     });
     const send = btn('Invia', null, s.name);
     send.addEventListener('click', () => {
       if (input.value) { vscode.postMessage({ type: 'send', service: s.name, text: input.value }); input.value = ''; }
     });
-    cmd.appendChild(input);
-    cmd.appendChild(send);
+    cmd.appendChild(input); cmd.appendChild(send);
     el.appendChild(cmd);
   }
   return el;
+}
+
+function chip(text, warn) {
+  const c = document.createElement('span');
+  c.className = 'chip' + (warn ? ' warn' : '');
+  c.textContent = text;
+  return c;
 }
 
 function btn(label, type, service, cls) {
@@ -290,4 +331,15 @@ function btn(label, type, service, cls) {
   if (type) b.addEventListener('click', () => vscode.postMessage({ type, service }));
   return b;
 }
+
+// Uptime live: aggiorna ogni secondo le chip che portano data-uptime.
+setInterval(() => {
+  const now = Date.now();
+  document.querySelectorAll('[data-uptime]').forEach((el) => {
+    const secs = Math.max(0, Math.floor((now - Number(el.dataset.uptime)) / 1000));
+    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    el.textContent = '⏱ ' + (h > 0 ? h + ':' : '') + pad(m) + ':' + pad(s);
+  });
+}, 1000);
 `;

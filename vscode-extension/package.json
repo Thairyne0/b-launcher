@@ -15,6 +15,7 @@
   },
   "categories": ["Other"],
   "keywords": ["backend", "launcher", "orchestrator", "dev servers", "monorepo"],
+  "galleryBanner": { "color": "#0d1117", "theme": "dark" },
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished"
@@ -54,7 +55,12 @@
       { "command": "backendLauncher.saveDetectedProject", "title": "Salva progetto in Backend Launcher", "icon": "$(save)" },
       { "command": "backendLauncher.startAll", "title": "Backend Launcher: Avvia tutti", "icon": "$(run-all)" },
       { "command": "backendLauncher.stopAll", "title": "Backend Launcher: Ferma tutti", "icon": "$(stop-circle)" },
-      { "command": "backendLauncher.scanWorkspace", "title": "Backend Launcher: Scansiona la cartella corrente", "icon": "$(search)" }
+      { "command": "backendLauncher.scanWorkspace", "title": "Backend Launcher: Scansiona la cartella corrente", "icon": "$(search)" },
+      { "command": "backendLauncher.openServiceFiles", "title": "Apri file del backend", "icon": "$(go-to-file)" },
+      { "command": "backendLauncher.quickStart", "title": "Backend Launcher: Avvia un backend…", "icon": "$(rocket)" }
+    ],
+    "keybindings": [
+      { "command": "backendLauncher.quickStart", "key": "ctrl+alt+b", "mac": "cmd+alt+b" }
     ],
     "menus": {
       "view/title": [
@@ -70,6 +76,7 @@
         { "command": "backendLauncher.openAppUrl", "when": "view == backendLauncherServices && viewItem =~ /^service.*\\.url/", "group": "inline@3" },
         { "command": "backendLauncher.startServiceWith", "when": "view == backendLauncherServices && viewItem =~ /^service/", "group": "svc@1" },
         { "command": "backendLauncher.revealTerminal", "when": "view == backendLauncherServices && viewItem =~ /^service\\.running/", "group": "svc@2" },
+        { "command": "backendLauncher.openServiceFiles", "when": "view == backendLauncherServices && viewItem =~ /^service/", "group": "svc@3" },
         { "command": "backendLauncher.openProjectDashboard", "when": "view == backendLauncherServices && viewItem =~ /^(project|detected)/", "group": "inline@1" },
         { "command": "backendLauncher.startProject", "when": "view == backendLauncherServices && viewItem =~ /^(project|detected)/", "group": "inline@2" },
         { "command": "backendLauncher.stopProject", "when": "view == backendLauncherServices && viewItem =~ /^(project|detected)\\.running/", "group": "inline@3" },
